@@ -157,14 +157,36 @@ public enum BundleIdentifierResolver {
     private static let launchctlTimeout: TimeInterval = 5
 
     private static func runLaunchctlList(udid: String) throws -> String {
+        try runCapturing(
+            executable: URL(fileURLWithPath: "/usr/bin/xcrun"),
+            arguments: ["simctl", "spawn", udid, "launchctl", "list"],
+            timeout: launchctlTimeout
+        )
+    }
+
+    /// Runs a child and returns its stdout. Internal for tests, which pass
+    /// `makePipe` to observe the pipes.
+    static func runCapturing(
+        executable: URL,
+        arguments: [String],
+        timeout: TimeInterval,
+        makePipe: () -> Pipe = { Pipe() }
+    ) throws -> String {
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/xcrun")
-        process.arguments = ["simctl", "spawn", udid, "launchctl", "list"]
-        let stdoutPipe = Pipe()
+        process.executableURL = executable
+        process.arguments = arguments
+        let stdoutPipe = makePipe()
+        let stderrPipe = makePipe()
         process.standardOutput = stdoutPipe
-        process.standardError = Pipe()
+        process.standardError = stderrPipe
+        // Close our read ends on every path, including the timeout below: an unclosed Pipe leaks two
+        // descriptors per call, and in the long-lived daemon that ended every later spawn.
+        defer {
+            try? stdoutPipe.fileHandleForReading.close()
+            try? stderrPipe.fileHandleForReading.close()
+        }
         try process.run()
-        let deadline = Date().addingTimeInterval(launchctlTimeout)
+        let deadline = Date().addingTimeInterval(timeout)
         while process.isRunning {
             if Date() >= deadline {
                 process.terminate()
@@ -177,11 +199,19 @@ public enum BundleIdentifierResolver {
                 throw NSError(
                     domain: "BundleIdentifierResolver",
                     code: -1,
-                    userInfo: [NSLocalizedDescriptionKey: "simctl spawn timed out after \(launchctlTimeout)s"]
+                    userInfo: [NSLocalizedDescriptionKey: "simctl spawn timed out after \(timeout)s"]
                 )
             }
             Thread.sleep(forTimeInterval: 0.02)
         }
+        // The child has exited, so this returns at once. It runs the
+        // termination block Process queued on this thread's run loop; until
+        // that runs, the block keeps the Process and both Pipes alive, and in
+        // the daemon it later ran outside any autorelease pool, so every call
+        // leaked both Pipes. Not called on the timeout path, where a child
+        // that ignores terminate() would block here; `defer` closes the read
+        // ends there.
+        process.waitUntilExit()
         guard process.terminationStatus == 0 else {
             throw NSError(domain: "BundleIdentifierResolver", code: Int(process.terminationStatus))
         }
