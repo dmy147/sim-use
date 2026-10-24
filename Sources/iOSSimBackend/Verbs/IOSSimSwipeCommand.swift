@@ -51,6 +51,9 @@ public struct IOSSimSwipeCommand: SimUseExecutableCommand {
     @Option(name: .customLong("post-delay"), help: "Delay after completing the swipe in seconds.")
     public var postDelay: Double?
 
+    @Option(name: .customLong("hold"), help: "End the drag slowly over this many seconds before lifting, so scroll views do not fling (0-5; a ~130 pt/s tail).")
+    public var hold: Double?
+
     @OptionGroup public var device: DeviceOptions
 
     @OptionGroup public var json: JSONOutputOptions
@@ -77,7 +80,8 @@ public struct IOSSimSwipeCommand: SimUseExecutableCommand {
             duration: duration,
             delta: delta,
             preDelay: preDelay,
-            postDelay: postDelay
+            postDelay: postDelay,
+            hold: hold
         )
     }
 
@@ -89,8 +93,15 @@ public struct IOSSimSwipeCommand: SimUseExecutableCommand {
         duration: Double?,
         delta: Double?,
         preDelay: Double?,
-        postDelay: Double?
+        postDelay: Double?,
+        hold: Double? = nil
     ) throws {
+        if let hold {
+            guard hold >= 0 && hold <= 5.0 else {
+                throw ValidationError("--hold must be between 0 and 5 seconds.")
+            }
+        }
+
         if let duration {
             guard duration > 0 else {
                 throw ValidationError("Duration must be greater than 0.")
@@ -166,15 +177,15 @@ public struct IOSSimSwipeCommand: SimUseExecutableCommand {
             events.append(FBSimulatorHIDEvent.delay(preDelay))
         }
 
-        let swipeEvent = FBSimulatorHIDEvent.swipe(
-            dispatch.startX,
-            yStart: dispatch.startY,
-            xEnd: dispatch.endX,
-            yEnd: dispatch.endY,
+        events.append(Self.swipeEvent(
+            startX: dispatch.startX,
+            startY: dispatch.startY,
+            endX: dispatch.endX,
+            endY: dispatch.endY,
             delta: swipeDelta,
-            duration: swipeDuration
-        )
-        events.append(swipeEvent)
+            duration: swipeDuration,
+            hold: hold ?? 0
+        ))
 
         if let postDelay, postDelay > 0 {
             logger.info().log("Post-delay: \(postDelay)s")
@@ -191,5 +202,50 @@ public struct IOSSimSwipeCommand: SimUseExecutableCommand {
 
         logger.info().log("Swipe gesture completed successfully")
         return ExecutionResult(coordinates: coords, commandAdvisory: advisory)
+    }
+
+    /// The plain swipe is touch-down, samples along the line, then up.
+    /// With `hold > 0` the drag ends short of the end and covers the rest
+    /// slowly over `hold` seconds: one sample every ~30 ms,
+    /// `holdStepPoints` each (~130 pt/s, below the ~150 pt/s at which
+    /// lists were measured not to fling), then lifts. A
+    /// stationary pause does not work on the simulator: the scroll view
+    /// keeps the velocity of the last moving samples and still flings on
+    /// lift, as do 1 pt creep samples (measured).
+    nonisolated static func swipeEvent(
+        startX: Double, startY: Double, endX: Double, endY: Double,
+        delta: Double, duration: Double, hold: Double
+    ) -> FBSimulatorHIDEvent {
+        let distance = ((endX - startX) * (endX - startX) + (endY - startY) * (endY - startY)).squareRoot()
+        let samples = holdSamples(hold: hold, distance: distance)
+        guard samples > 0 else {
+            return .swipe(startX, yStart: startY, xEnd: endX, yEnd: endY, delta: delta, duration: duration)
+        }
+        let ux = (endX - startX) / distance, uy = (endY - startY) / distance
+        let creep = Double(samples) * holdStepPoints
+        let dragEndX = endX - ux * creep, dragEndY = endY - uy * creep
+        guard var events = FBSimulatorHIDEvent.swipe(
+            startX, yStart: startY, xEnd: dragEndX, yEnd: dragEndY, delta: delta, duration: duration
+        ).subEvents else { return .composite([]) }
+        events.removeLast()  // the plain swipe's touch up at the drag end
+        let gap = hold / Double(samples)
+        for k in 1...samples {
+            let remaining = creep - Double(k) * holdStepPoints
+            events.append(.delay(gap))
+            events.append(.touch(direction: .down, x: endX - ux * remaining, y: endY - uy * remaining))
+        }
+        events.append(.touch(direction: .up, x: endX, y: endY))
+        return .composite(events)
+    }
+
+    nonisolated static let holdStepPoints = 4.0
+
+    /// One slow sample per ~30 ms of hold (at least 2), capped so the
+    /// slow tail covers at most half the drag; 0 (the plain swipe) without
+    /// a hold or for a drag shorter than 2 samples' worth.
+    nonisolated static func holdSamples(hold: Double, distance: Double) -> Int {
+        guard hold > 0 else { return 0 }
+        let n = min(max(2, Int((hold / 0.03).rounded())), Int(distance / (2 * holdStepPoints)))
+        return n >= 2 ? n : 0
     }
 }

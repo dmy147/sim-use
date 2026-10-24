@@ -249,6 +249,7 @@ sim-use tap -x 100 -y 200 --device $UDID                      # raw point (or --
 
 sim-use swipe --from 100,300 --to 300,100 --device $UDID      # positional "100,300 300,100" works too
 sim-use swipe --from 50,500 --to 350,500 --duration 2.0 --delta 25 --device $UDID
+sim-use swipe --from 200,600 --to 200,300 --duration 0.3 --hold 0.15 --delta 10 --device $UDID   # iOS simulator: no fling
 
 # Low-level touch control
 sim-use touch -x 150 -y 250 --down --device $UDID             # then: touch ... --up
@@ -261,6 +262,8 @@ sim-use gesture scroll-down --pre-delay 0.5 --post-delay 1.0 --device $UDID
 ```
 
 `--pre-delay` / `--post-delay` / `--duration` work on `tap`, `swipe`, and `gesture` alike for coarse timing control.
+
+`swipe --hold <seconds>` (0–5, iOS simulator) ends the drag slowly so a scroll view stops where the finger stops instead of flinging. Pausing at the end point does not prevent a fling on the simulator, because the scroll view keeps the velocity of the last moving samples. The drag therefore stops a little short and covers the rest at about 130 pt/s (4 pt every ~30 ms) before lifting. Without `--hold`, the swipe is unchanged.
 
 Single-finger presets (`scroll-*`, `swipe-from-*-edge`) name **visual** directions and are orientation-aware on iOS: their canvas size and rotation are auto-detected per command, so `scroll-up` scrolls the on-screen content up whether the device is portrait, landscape, or upside-down. Explicit `tap`/`swipe`/`touch`/`multi-touch` coordinates, `paste --via-menu --target-x/--target-y` and the pinch/rotate `--center-x/--center-y` are in the same visual space `ui` prints (orientation-calibrated per command; the split `touch --down` / `--up` form calibrates each half). `--coordinate-space native` gives them in the device's native portrait points, as before 0.16.0. Calibration reuses the last `ui` snapshot when it can, so it costs a few milliseconds; with no snapshot it reads the tree once. On Android the flag is accepted and ignored — display coordinates already rotate with the UI.
 

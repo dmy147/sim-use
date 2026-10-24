@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Notarized Homebrew packages retain their original Developer ID signature after installation.
 
+### Added
+
+- iOS: `swipe --hold <seconds>` ends the drag slowly so lists stop where the finger stops instead of flinging, for example 0.3 s plus a 0.15 s hold to scroll 300 pt predictably instead of a 2 s drag. Swipes without `--hold` are unchanged.
+
 ### Fixed
 
 - Homebrew: preserve the upstream signature for notarized releases instead of replacing it with an ad-hoc signature. Release installation checks now use the same formula generator and verify that Homebrew leaves the signed binary unchanged.

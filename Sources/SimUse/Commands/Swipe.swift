@@ -36,6 +36,9 @@ struct Swipe: SimUseExecutableCommand {
     @Option(name: .customLong("post-delay"), help: "Delay after completing the swipe in seconds.")
     var postDelay: Double?
 
+    @Option(name: .customLong("hold"), help: "iOS simulator only: end the drag slowly over this many seconds before lifting, so scroll views do not fling (0-5; a ~130 pt/s tail).")
+    var hold: Double?
+
     @OptionGroup var device: DeviceOptions
 
     @OptionGroup var json: JSONOutputOptions
@@ -65,7 +68,8 @@ struct Swipe: SimUseExecutableCommand {
             duration: duration,
             delta: delta,
             preDelay: preDelay,
-            postDelay: postDelay
+            postDelay: postDelay,
+            hold: hold
         )
     }
 
@@ -105,6 +109,7 @@ struct Swipe: SimUseExecutableCommand {
         sub.delta = delta
         sub.preDelay = preDelay
         sub.postDelay = postDelay
+        sub.hold = hold
         sub.device = device
         sub.json = json
         return sub
@@ -117,6 +122,9 @@ struct Swipe: SimUseExecutableCommand {
     /// `pre-delay` / `post-delay` honored via `Task.sleep` around
     /// the bridge call — mirrors `Gesture.swift`'s `executeAndroid`.
     private func executeAndroid() async throws -> ExecutionResult {
+        if let hold, hold > 0 {
+            throw ValidationError("--hold is not supported on Android.")
+        }
         let coords = try coordinates.resolve()
         let durationMs = max(1, Int((duration ?? 0.3) * 1000))
         if let preDelay, preDelay > 0 {

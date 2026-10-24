@@ -198,6 +198,7 @@ sim-use ios key-combo --modifiers 227,225 --key 4     # Cmd+Shift+A
 | `--pre-delay` | 0–10s | Delay before action | tap, swipe, gesture |
 | `--post-delay` | 0–10s | Delay after action | tap, swipe, gesture |
 | `--duration` | 0–10s | Action duration | swipe, gesture, button, key, tap (opt-in for toggles) |
+| `--hold` | 0–5s | Slow tail at the end of the drag so lists do not fling (iOS simulator) | swipe |
 | `--delay` | 0–5s | Between-item delay | key-sequence, touch |
 
 ## UDID auto-resolution
