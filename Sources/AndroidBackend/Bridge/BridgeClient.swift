@@ -69,6 +69,9 @@ public final class BridgeClient: @unchecked Sendable {
     private var cachedAuthToken: String?
     private var verifiedProtocolVersion: Bool = false
     private var cachedDisplay: DisplayMetrics?
+    /// `X-Simuse-Perf` of the last successful response (bridge stage ms), absent from older bridges.
+    private var lastPerfHeader: String?
+    public var lastBridgePerf: String? { lock.lock(); defer { lock.unlock() }; return lastPerfHeader }
 
     public init(
         adb: Adb,
@@ -537,6 +540,7 @@ public final class BridgeClient: @unchecked Sendable {
         }
         switch http.statusCode {
         case 200:
+            lock.lock(); lastPerfHeader = http.value(forHTTPHeaderField: "X-Simuse-Perf"); lock.unlock()
             return data
         case 401:
             if allowReconnect && expectAuth {

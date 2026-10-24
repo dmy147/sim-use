@@ -282,13 +282,18 @@ class HttpServer(
             append("Content-Type: application/json; charset=utf-8\r\n")
             append("Content-Length: ${bodyBytes.size}\r\n")
             append("Connection: close\r\n")
+            response.headers.forEach { (k, v) -> append("$k: $v\r\n") }
             append("\r\n")
         }
 
+        val t0 = android.os.SystemClock.elapsedRealtime()
         socket.getOutputStream().apply {
             write(header.toByteArray(Charsets.UTF_8))
             write(bodyBytes)
             flush()
+        }
+        if (response.headers.containsKey("X-Simuse-Perf")) {
+            Log.i(TAG, "response write=${android.os.SystemClock.elapsedRealtime() - t0}ms bytes=${bodyBytes.size}")
         }
     }
 

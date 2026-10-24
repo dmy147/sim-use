@@ -4,6 +4,7 @@ package com.linecorp.simuse.devicebridge.server
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
 import android.util.Base64
+import android.os.SystemClock
 import android.util.Log
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityNodeInfo
@@ -126,7 +127,10 @@ class ActionRouter(
 
     private fun handleTree(params: Map<String, String>): HttpResponse {
         val service = requireService() ?: return serviceUnavailable()
+        // Stage timing returned in `X-Simuse-Perf` (host prints it under SIM_USE_PERF=1).
+        val t0 = SystemClock.elapsedRealtime()
         val activeRoot = getRootWithTimeout(service) ?: return rootWindowTimeout()
+        val tRoot = SystemClock.elapsedRealtime()
         // buildTree recycles activeRoot in its finally — read everything
         // we still need from the node BEFORE handing it over. On API
         // 30-32 recycle() clears the fields, so a post-recycle windowId
@@ -136,6 +140,7 @@ class ActionRouter(
         val filter = params["filter"]?.lowercase() == "true"
         val activeTree = treeHandler.buildTree(activeRoot, filter)
             ?: return HttpResponse(500, errorJson("tree_build_failed"))
+        val tWalk = SystemClock.elapsedRealtime()
 
         // Merge in any same-task secondary windows (PopupWindow-style
         // overlays that aren't the active window root). LINE's chat
@@ -147,6 +152,7 @@ class ActionRouter(
         val display = computeDisplay(service)
         val displayBounds = Rect(0, 0, display.optInt("width"), display.optInt("height"))
         val secondaries = collectSecondaryAppWindowTrees(service, activeWindowId, filter)
+        val tSecondary = SystemClock.elapsedRealtime()
 
         val resultTree = if (secondaries.isEmpty()) {
             activeTree
@@ -163,16 +169,25 @@ class ActionRouter(
         // The IME window state sampled with the tree, so a reader needs no
         // separate `/keyboard/state` round trip. Same source as that endpoint.
         val keyboardState = keyboardStateHandler.query(service)
+        val tKeyboard = SystemClock.elapsedRealtime()
+        val resultJson = resultTree.toJson()
+        val tJson = SystemClock.elapsedRealtime()
         val payload = JSONObject().apply {
             put("status", "success")
-            put("result", resultTree.toJson())
+            put("result", resultJson)
             put("display", display)
             put("keyboard", JSONObject().apply {
                 put("visible", keyboardState.visible)
                 if (keyboardState.imePackage != null) put("ime_package", keyboardState.imePackage)
             })
         }
-        return HttpResponse(200, payload.toString())
+        val body = payload.toString()
+        val tString = SystemClock.elapsedRealtime()
+        val perf = "root=${tRoot - t0};walk=${tWalk - tRoot};secondary=${tSecondary - tWalk};" +
+            "secondaryWindows=${secondaries.size};keyboard=${tKeyboard - tSecondary};" +
+            "toJson=${tJson - tKeyboard};toString=${tString - tJson};total=${tString - t0}"
+        Log.i(TAG, "a11y_tree_full perf $perf chars=${body.length}")
+        return HttpResponse(200, body, mapOf("X-Simuse-Perf" to perf))
     }
 
     /**

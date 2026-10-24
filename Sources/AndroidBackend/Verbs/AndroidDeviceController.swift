@@ -62,10 +62,13 @@ public final class AndroidDeviceController {
         includeRaw: Bool = true
     ) throws -> DescribeUIResult {
         let client = bridge(serial: serial)
+        let perf = AndroidPerf()
         _ = try client.ping()
+        perf?.stage("ping")
 
         let rawBytes = try client.fetchTreeRaw()
-        let (result, outline) = try Self.describeUI(treeBytes: rawBytes, options: options, includeRaw: includeRaw)
+        perf?.stage("fetch")
+        let (result, outline) = try Self.describeUI(treeBytes: rawBytes, options: options, includeRaw: includeRaw, perf: perf)
 
         do {
             try OutlineCache.write(outline: outline, udid: serial)
@@ -79,6 +82,8 @@ public final class AndroidDeviceController {
                 Data("warning: failed to write outline cache for \(serial): \(error.localizedDescription)\n".utf8)
             )
         }
+        perf?.stage("cacheWrite")
+        perf?.finish(bytes: rawBytes.count, includeRaw: includeRaw, bridge: client.lastBridgePerf)
         return result
     }
 
@@ -94,14 +99,18 @@ public final class AndroidDeviceController {
     private static func describeUI(
         treeBytes rawBytes: Data,
         options: AndroidOutlineRenderer.RendererOptions,
-        includeRaw: Bool
+        includeRaw: Bool,
+        perf: AndroidPerf? = nil
     ) throws -> (result: DescribeUIResult, outline: Outline) {
         let decoded = try decodeTree(rawBytes)
         guard let root = decoded.root else {
             throw BridgeError.malformedEnvelope(underlying: "Bridge returned a tree without a root element")
         }
+        perf?.stage("decode")
+        if let perf { perf.nodes = AndroidPerf.count(root) }
 
         let outline = AndroidOutlineRenderer.render(root: root, display: decoded.display, options: options)
+        perf?.stage("render")
 
         // Timing-insensitive crash detection: if the system crash dialog
         // ("<app> keeps stopping") is on screen, surface it as a banner
@@ -120,6 +129,7 @@ public final class AndroidDeviceController {
 
         // Foundation avoids recursive try-each-type decoding for ordinary bridge integers.
         let rawJSON: JSONValue? = includeRaw ? try AndroidRawJSON.decode(from: rawBytes) : nil
+        perf?.stage("rawDecode")
 
         let result = DescribeUIResult(
             platform: .android,
@@ -279,5 +289,38 @@ public final class AndroidDeviceController {
             throw BridgeError.applicationError(status: envelope.status, code: envelope.code, message: envelope.error)
         }
         return (envelope.result, envelope.display, envelope.keyboard)
+    }
+}
+
+/// `SIM_USE_PERF=1` stage timing of the Android `ui` read, one stderr line per read.
+/// Host stages are ms; `bridge=` is the bridge's own `X-Simuse-Perf` header (root/walk/secondary/keyboard/toJson/toString ms).
+/// `fetch - bridge total` is transport (bridge write + adb forward + URLSession read). Off: `AndroidPerf()` returns nil.
+final class AndroidPerf {
+    private var last = DispatchTime.now()
+    private let start = DispatchTime.now()
+    private var stages: [String] = []
+    var nodes = 0
+
+    init?() {
+        guard ProcessInfo.processInfo.environment["SIM_USE_PERF"] == "1" else { return nil }
+    }
+
+    func stage(_ name: String) {
+        let now = DispatchTime.now()
+        stages.append(String(format: "%@=%.1f", name, Double(now.uptimeNanoseconds &- last.uptimeNanoseconds) / 1e6))
+        last = now
+    }
+
+    func finish(bytes: Int, includeRaw: Bool, bridge: String?) {
+        let total = Double(DispatchTime.now().uptimeNanoseconds &- start.uptimeNanoseconds) / 1e6
+        let line = "[PERF] android-ui at=\(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true))) "
+            + stages.joined(separator: " ")
+            + String(format: " total=%.1f", total)
+            + " bytes=\(bytes) nodes=\(nodes) raw=\(includeRaw) bridge=\(bridge ?? "-")\n"
+        FileHandle.standardError.write(Data(line.utf8))
+    }
+
+    static func count(_ node: ElementNode) -> Int {
+        node.children.reduce(1) { $0 + count($1) }
     }
 }
