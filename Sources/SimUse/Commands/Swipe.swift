@@ -36,6 +36,9 @@ struct Swipe: SimUseExecutableCommand {
     @Option(name: .customLong("post-delay"), help: "Delay after completing the swipe in seconds.")
     var postDelay: Double?
 
+    @Option(name: .customLong("hold"), help: "End the drag slowly over this many seconds before lifting, so scroll views do not fling (0-5; iOS: a slow ~130 pt/s tail, Android: a stationary hold).")
+    var hold: Double?
+
     @OptionGroup var device: DeviceOptions
 
     @OptionGroup var json: JSONOutputOptions
@@ -65,7 +68,8 @@ struct Swipe: SimUseExecutableCommand {
             duration: duration,
             delta: delta,
             preDelay: preDelay,
-            postDelay: postDelay
+            postDelay: postDelay,
+            hold: hold
         )
     }
 
@@ -105,6 +109,7 @@ struct Swipe: SimUseExecutableCommand {
         sub.delta = delta
         sub.preDelay = preDelay
         sub.postDelay = postDelay
+        sub.hold = hold
         sub.device = device
         sub.json = json
         return sub
@@ -128,7 +133,8 @@ struct Swipe: SimUseExecutableCommand {
             startY: coords.roundedStartY,
             endX: coords.roundedEndX,
             endY: coords.roundedEndY,
-            durationMs: durationMs
+            durationMs: durationMs,
+            holdMs: Int(((hold ?? 0) * 1000).rounded())
         )
         if let postDelay, postDelay > 0 {
             try await Task.sleep(nanoseconds: UInt64(postDelay * 1_000_000_000))
