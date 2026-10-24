@@ -351,7 +351,13 @@ class ActionRouter(
         val endX = params["endX"]?.toFloatOrNull() ?: return badRequest("missing_endX")
         val endY = params["endY"]?.toFloatOrNull() ?: return badRequest("missing_endY")
         val duration = params["duration"]?.toLongOrNull() ?: DEFAULT_SWIPE_DURATION
-        val ok = gestureHandler.swipe(service, startX, startY, endX, endY, duration)
+        // Optional hold (ms) at the end before lifting; protocol 4.
+        val hold = params["hold"]?.toLongOrNull() ?: 0L
+        val ok = if (hold > 0) {
+            gestureHandler.dragAndHold(service, startX, startY, endX, endY, duration, hold)
+        } else {
+            gestureHandler.swipe(service, startX, startY, endX, endY, duration)
+        }
         return if (ok) HttpResponse(200, successJson()) else HttpResponse(500, errorJson("swipe_failed"))
     }
 

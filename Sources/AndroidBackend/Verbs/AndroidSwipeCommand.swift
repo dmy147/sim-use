@@ -29,6 +29,11 @@ public struct AndroidSwipeCommand: SimUseExecutableCommand {
     @Option(name: .customLong("duration"), help: "Duration of the swipe in seconds (default 0.3).")
     public var duration: Double = 0.3
 
+    /// Keep the pointer still at the end before lifting, so the
+    /// release velocity is ~0 and lists do not fling. Needs bridge protocol 4.
+    @Option(name: .customLong("hold"), help: "Hold still at the end for this many seconds before lifting (0-5).")
+    public var hold: Double?
+
     @Option(name: .customLong("pre-delay"), help: "Delay before starting the swipe in seconds.")
     public var preDelay: Double?
 
@@ -74,6 +79,11 @@ public struct AndroidSwipeCommand: SimUseExecutableCommand {
         // 0...10 like every other surface. The upper bound also rejects
         // inf/nan, which the sign-only check let through into the
         // Double→UInt64 conversion in execute()'s Task.sleep — a trap.
+        if let hold {
+            guard hold >= 0 && hold <= 5.0 else {
+                throw ValidationError("--hold must be between 0 and 5 seconds.")
+            }
+        }
         if let preDelay {
             guard preDelay >= 0 && preDelay <= 10.0 else {
                 throw ValidationError("--pre-delay must be between 0 and 10 seconds.")
@@ -104,7 +114,8 @@ public struct AndroidSwipeCommand: SimUseExecutableCommand {
             udid: device.resolved,
             startX: coords.roundedStartX, startY: coords.roundedStartY,
             endX: coords.roundedEndX, endY: coords.roundedEndY,
-            durationMs: durationMs
+            durationMs: durationMs,
+            holdMs: Int(((hold ?? 0) * 1000).rounded())
         )
         if let postDelay, postDelay > 0 {
             try await Task.sleep(nanoseconds: UInt64(postDelay * 1_000_000_000))
@@ -134,6 +145,23 @@ public struct AndroidSwipeCommand: SimUseExecutableCommand {
         durationMs: Int,
         controller: AndroidDeviceController = AndroidDeviceController()
     ) throws {
+        try performSwipe(
+            udid: udid, startX: startX, startY: startY, endX: endX, endY: endY,
+            durationMs: durationMs, holdMs: 0, controller: controller
+        )
+    }
+
+    /// The same swipe with an optional hold before lifting.
+    public static func performSwipe(
+        udid: String,
+        startX: Int,
+        startY: Int,
+        endX: Int,
+        endY: Int,
+        durationMs: Int,
+        holdMs: Int,
+        controller: AndroidDeviceController = AndroidDeviceController()
+    ) throws {
         // Choke point for both `android swipe` and the top-level
         // forwarder: the top-level command validates coordinates as
         // Doubles before it knows the target is Android, so the
@@ -145,6 +173,6 @@ public struct AndroidSwipeCommand: SimUseExecutableCommand {
             throw CLIError(errorDescription: "Start and end points must be different after rounding to integer pixels.")
         }
         let client = controller.bridge(serial: udid)
-        try client.swipe(startX: startX, startY: startY, endX: endX, endY: endY, durationMs: durationMs)
+        try client.swipe(startX: startX, startY: startY, endX: endX, endY: endY, durationMs: durationMs, holdMs: holdMs)
     }
 }

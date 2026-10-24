@@ -11,15 +11,15 @@ android {
         applicationId = "com.linecorp.simuse.devicebridge"
         minSdk = 30
         targetSdk = 35
-        versionCode = 26
-        versionName = "0.16.0-local.3"
+        versionCode = 27
+        versionName = "0.16.0-local.4"
 
         // Must match `BridgeClient.expectedProtocolVersion` on the
         // Swift side — bump both together on breaking wire changes
-        // only (see CLAUDE.md). This downstream branch uses 3 for the
-        // checked /tap_node contract; upstream uses 2. Switching either
+        // only (see CLAUDE.md). This downstream branch uses 4 (3 added
+        // the checked /tap_node contract, 4 the /swipe hold); upstream uses 2. Switching either
         // direction requires the matching bridge APK.
-        buildConfigField("int", "PROTOCOL_VERSION", "3")
+        buildConfigField("int", "PROTOCOL_VERSION", "4")
     }
 
     buildFeatures {

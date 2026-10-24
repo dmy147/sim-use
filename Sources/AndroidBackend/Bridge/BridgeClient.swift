@@ -27,7 +27,7 @@ import SimUseCore
 /// would balk at the `var` properties even though they're never read
 /// outside the lock.
 public final class BridgeClient: @unchecked Sendable {
-    public static let expectedProtocolVersion = 3
+    public static let expectedProtocolVersion = 4
     public static let defaultRemotePort = 8080
 
     /// Android package id of the device-bridge APK. Single source of
@@ -249,9 +249,15 @@ public final class BridgeClient: @unchecked Sendable {
     }
 
     /// `POST /swipe`.
-    public func swipe(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Int) throws {
-        let body = "startX=\(startX)&startY=\(startY)&endX=\(endX)&endY=\(endY)&duration=\(durationMs)".data(using: .utf8)!
-        try sendNoResult(method: "POST", path: "/swipe", body: body, contentType: "application/x-www-form-urlencoded")
+    public func swipe(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Int, holdMs: Int = 0) throws {
+        let body = Self.swipeBody(startX: startX, startY: startY, endX: endX, endY: endY, durationMs: durationMs, holdMs: holdMs)
+        try sendNoResult(method: "POST", path: "/swipe", body: Data(body.utf8), contentType: "application/x-www-form-urlencoded")
+    }
+
+    /// `hold` (ms) is a protocol-4 field: the bridge holds still before lifting.
+    static func swipeBody(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Int, holdMs: Int) -> String {
+        let base = "startX=\(startX)&startY=\(startY)&endX=\(endX)&endY=\(endY)&duration=\(durationMs)"
+        return holdMs > 0 ? base + "&hold=\(holdMs)" : base
     }
 
     /// `POST /gesture` — multi-stroke gesture dispatched in parallel
