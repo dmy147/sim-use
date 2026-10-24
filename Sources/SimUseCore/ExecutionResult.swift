@@ -39,6 +39,9 @@ public struct DescribeUIResult: Codable, Equatable, Sendable {
     /// prepended to `outline`. Always `nil` on iOS and when no dialog is
     /// detected — Codable omits the key in that case, keeping it additive.
     public let crashDialog: CrashDialogSignal?
+    /// Android soft-keyboard state sampled with the tree. `nil` on iOS
+    /// and with an upstream bridge that does not report it — Codable omits the key then.
+    public let keyboard: KeyboardSignal?
 
     public init(
         platform: Platform,
@@ -49,7 +52,8 @@ public struct DescribeUIResult: Codable, Equatable, Sendable {
         screen: Outline.Frame,
         appLabel: String,
         appPackage: String,
-        crashDialog: CrashDialogSignal? = nil
+        crashDialog: CrashDialogSignal? = nil,
+        keyboard: KeyboardSignal? = nil
     ) {
         self.platform = platform
         self.raw = raw
@@ -60,5 +64,17 @@ public struct DescribeUIResult: Codable, Equatable, Sendable {
         self.appLabel = appLabel
         self.appPackage = appPackage
         self.crashDialog = crashDialog
+        self.keyboard = keyboard
+    }
+}
+
+/// Soft-keyboard visibility in the `keyboard-state --json` shape (`visible`, `imePackage`).
+public struct KeyboardSignal: Codable, Equatable, Sendable {
+    public let visible: Bool
+    public let imePackage: String?
+
+    public init(visible: Bool, imePackage: String?) {
+        self.visible = visible
+        self.imePackage = imePackage
     }
 }

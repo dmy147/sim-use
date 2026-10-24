@@ -65,6 +65,37 @@ public final class AndroidDeviceController {
         _ = try client.ping()
 
         let rawBytes = try client.fetchTreeRaw()
+        let (result, outline) = try Self.describeUI(treeBytes: rawBytes, options: options, includeRaw: includeRaw)
+
+        do {
+            try OutlineCache.write(outline: outline, udid: serial)
+        } catch {
+            // Best-effort: a cache write failure is non-fatal, but
+            // log to stderr so a permissions / full-disk regression
+            // is debuggable. iOS describe-ui uses the same shape
+            // via `SimUseLogger`; we don't have a logger here yet,
+            // so write directly to standardError.
+            FileHandle.standardError.write(
+                Data("warning: failed to write outline cache for \(serial): \(error.localizedDescription)\n".utf8)
+            )
+        }
+        return result
+    }
+
+    /// Bridge tree bytes → result, without device access (split out for tests).
+    static func describeUIResult(
+        treeBytes: Data,
+        options: AndroidOutlineRenderer.RendererOptions,
+        includeRaw: Bool
+    ) throws -> DescribeUIResult {
+        try describeUI(treeBytes: treeBytes, options: options, includeRaw: includeRaw).result
+    }
+
+    private static func describeUI(
+        treeBytes rawBytes: Data,
+        options: AndroidOutlineRenderer.RendererOptions,
+        includeRaw: Bool
+    ) throws -> (result: DescribeUIResult, outline: Outline) {
         let decoded = try decodeTree(rawBytes)
         guard let root = decoded.root else {
             throw BridgeError.malformedEnvelope(underlying: "Bridge returned a tree without a root element")
@@ -90,20 +121,7 @@ public final class AndroidDeviceController {
         // Foundation avoids recursive try-each-type decoding for ordinary bridge integers.
         let rawJSON: JSONValue? = includeRaw ? try AndroidRawJSON.decode(from: rawBytes) : nil
 
-        do {
-            try OutlineCache.write(outline: outline, udid: serial)
-        } catch {
-            // Best-effort: a cache write failure is non-fatal, but
-            // log to stderr so a permissions / full-disk regression
-            // is debuggable. iOS describe-ui uses the same shape
-            // via `SimUseLogger`; we don't have a logger here yet,
-            // so write directly to standardError.
-            FileHandle.standardError.write(
-                Data("warning: failed to write outline cache for \(serial): \(error.localizedDescription)\n".utf8)
-            )
-        }
-
-        return DescribeUIResult(
+        let result = DescribeUIResult(
             platform: .android,
             raw: rawJSON,
             outline: outlineText,
@@ -112,8 +130,10 @@ public final class AndroidDeviceController {
             screen: outline.screen,
             appLabel: outline.appLabel,
             appPackage: root.package,
-            crashDialog: crashDialog
+            crashDialog: crashDialog,
+            keyboard: decoded.keyboard.map { KeyboardSignal(visible: $0.visible, imePackage: $0.imePackage) }
         )
+        return (result, outline)
     }
 
     // MARK: - Init / bootstrap
@@ -251,11 +271,13 @@ public final class AndroidDeviceController {
 
     // MARK: - Tree decoding
 
-    private func decodeTree(_ data: Data) throws -> (root: ElementNode?, display: DisplayMetrics?) {
+    private static func decodeTree(
+        _ data: Data
+    ) throws -> (root: ElementNode?, display: DisplayMetrics?, keyboard: KeyboardStateResult?) {
         let envelope = try JSONDecoder().decode(BridgeEnvelope<ElementNode>.self, from: data)
         if !envelope.isSuccess {
             throw BridgeError.applicationError(status: envelope.status, code: envelope.code, message: envelope.error)
         }
-        return (envelope.result, envelope.display)
+        return (envelope.result, envelope.display, envelope.keyboard)
     }
 }

@@ -16,6 +16,8 @@ public struct BridgeEnvelope<Result: Decodable>: Decodable {
     public let status: String
     public let result: Result?
     public let display: DisplayMetrics?
+    /// `/a11y_tree_full` only; absent from upstream bridges.
+    public let keyboard: KeyboardStateResult?
     public let error: String?
     public let code: String?
 

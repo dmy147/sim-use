@@ -160,10 +160,17 @@ class ActionRouter(
         // so the client can correctly distinguish a fullscreen activity
         // from a floating popup / dialog whose root window covers only
         // part of the device.
+        // The IME window state sampled with the tree, so a reader needs no
+        // separate `/keyboard/state` round trip. Same source as that endpoint.
+        val keyboardState = keyboardStateHandler.query(service)
         val payload = JSONObject().apply {
             put("status", "success")
             put("result", resultTree.toJson())
             put("display", display)
+            put("keyboard", JSONObject().apply {
+                put("visible", keyboardState.visible)
+                if (keyboardState.imePackage != null) put("ime_package", keyboardState.imePackage)
+            })
         }
         return HttpResponse(200, payload.toString())
     }

@@ -75,6 +75,7 @@ private struct UIMetadata: Decodable {
     let appLabel: String
     let appPackage: String
     let crashDialog: CrashDialogSignal?
+    let keyboard: KeyboardSignal?
 }
 
 private struct NonNullJSON: Decodable {
