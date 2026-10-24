@@ -45,6 +45,7 @@ class SimuseAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         // No event-driven state. We pull rootInActiveWindow on demand.
+        EventLog.record(event)
     }
 
     override fun onInterrupt() {
