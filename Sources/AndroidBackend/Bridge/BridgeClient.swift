@@ -176,11 +176,18 @@ public final class BridgeClient: @unchecked Sendable {
     }
 
     /// `GET /a11y_tree_full` → wire envelope with an `ElementNode` payload.
-    public func fetchTreeRaw(filter: Bool = false) throws -> Data {
-        let path = filter ? "/a11y_tree_full?filter=true" : "/a11y_tree_full"
+    /// `visibleOnly` adds `visible=true`; the bridge keeps each
+    /// `visibleToUser == false` node but skips its descendants. An older bridge ignores it.
+    public func fetchTreeRaw(filter: Bool = false, visibleOnly: Bool = false) throws -> Data {
+        let path = Self.treePath(filter: filter, visibleOnly: visibleOnly)
         let request = try buildRequest(method: "GET", path: path, requiresAuth: true, body: nil, contentType: nil)
         let data = try sendRaw(request: request, expectAuth: true)
         return data
+    }
+
+    static func treePath(filter: Bool, visibleOnly: Bool) -> String {
+        let query = [filter ? "filter=true" : nil, visibleOnly ? "visible=true" : nil].compactMap { $0 }
+        return query.isEmpty ? "/a11y_tree_full" : "/a11y_tree_full?" + query.joined(separator: "&")
     }
 
     /// Device screen dimensions in pixels. Cached for the lifetime of this

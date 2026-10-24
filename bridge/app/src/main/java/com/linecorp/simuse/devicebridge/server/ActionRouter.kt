@@ -138,7 +138,9 @@ class ActionRouter(
         // silently vanish from the merged tree.
         val activeWindowId = activeRoot.windowId
         val filter = params["filter"]?.lowercase() == "true"
-        val activeTree = treeHandler.buildTree(activeRoot, filter)
+        // Additive; absent -> full tree as before.
+        val visibleOnly = params["visible"]?.lowercase() == "true"
+        val activeTree = treeHandler.buildTree(activeRoot, filter, visibleOnly)
             ?: return HttpResponse(500, errorJson("tree_build_failed"))
         val tWalk = SystemClock.elapsedRealtime()
 
@@ -151,7 +153,7 @@ class ActionRouter(
         // filter rationale.
         val display = computeDisplay(service)
         val displayBounds = Rect(0, 0, display.optInt("width"), display.optInt("height"))
-        val secondaries = collectSecondaryAppWindowTrees(service, activeWindowId, filter)
+        val secondaries = collectSecondaryAppWindowTrees(service, activeWindowId, filter, visibleOnly)
         val tSecondary = SystemClock.elapsedRealtime()
 
         val resultTree = if (secondaries.isEmpty()) {
@@ -219,6 +221,7 @@ class ActionRouter(
         service: AccessibilityService,
         activeWindowId: Int,
         filter: Boolean,
+        visibleOnly: Boolean,
     ): List<ElementNode> {
         val windows = service.windows ?: return emptyList()
         try {
@@ -233,7 +236,7 @@ class ActionRouter(
                 .sortedBy { it.layer }
                 .mapNotNull { window ->
                     val root = window.root ?: return@mapNotNull null
-                    treeHandler.buildTree(root, filter)
+                    treeHandler.buildTree(root, filter, visibleOnly)
                 }
         } finally {
             recycleWindows(windows)

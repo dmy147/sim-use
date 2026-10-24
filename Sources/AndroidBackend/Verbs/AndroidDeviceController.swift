@@ -66,8 +66,10 @@ public final class AndroidDeviceController {
         _ = try client.ping()
         perf?.stage("ping")
 
-        let rawBytes = try client.fetchTreeRaw()
+        let visibleOnly = Self.visibleOnlyTreeReads()
+        let rawBytes = try client.fetchTreeRaw(visibleOnly: visibleOnly)
         perf?.stage("fetch")
+        perf?.visibleOnly = visibleOnly
         let (result, outline) = try Self.describeUI(treeBytes: rawBytes, options: options, includeRaw: includeRaw, perf: perf)
 
         do {
@@ -85,6 +87,12 @@ public final class AndroidDeviceController {
         perf?.stage("cacheWrite")
         perf?.finish(bytes: rawBytes.count, includeRaw: includeRaw, bridge: client.lastBridgePerf)
         return result
+    }
+
+    /// Every `ui` read asks the bridge not to descend into invisible
+    /// subtrees; `SIM_USE_FULL_TREE=1` (read where the read runs, i.e. the daemon's env) restores the full walk.
+    static func visibleOnlyTreeReads(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
+        environment["SIM_USE_FULL_TREE"] != "1"
     }
 
     /// Bridge tree bytes → result, without device access (split out for tests).
@@ -300,6 +308,7 @@ final class AndroidPerf {
     private let start = DispatchTime.now()
     private var stages: [String] = []
     var nodes = 0
+    var visibleOnly = false
 
     init?() {
         guard ProcessInfo.processInfo.environment["SIM_USE_PERF"] == "1" else { return nil }
@@ -316,7 +325,7 @@ final class AndroidPerf {
         let line = "[PERF] android-ui at=\(Date().ISO8601Format(.iso8601.time(includingFractionalSeconds: true))) "
             + stages.joined(separator: " ")
             + String(format: " total=%.1f", total)
-            + " bytes=\(bytes) nodes=\(nodes) raw=\(includeRaw) bridge=\(bridge ?? "-")\n"
+            + " bytes=\(bytes) nodes=\(nodes) raw=\(includeRaw) visibleOnly=\(visibleOnly) bridge=\(bridge ?? "-")\n"
         FileHandle.standardError.write(Data(line.utf8))
     }
 
