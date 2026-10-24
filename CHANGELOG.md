@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Notarized Homebrew packages retain their original Developer ID signature after installation.
 
+### Changed
+
+- iOS: `type` is faster on long text. The stabilization delay now runs once after the text instead of after every key event, so 66 mixed-case characters take about 0.4 s instead of 6 s on the legacy HID transport, and about 16 s instead of 22 s on the DTUHID (Device Hub) transport. Set `SIM_USE_TYPE_KEY_DELAY_MS` if a text control needs a pause between keys.
+
 ### Fixed
 
 - Homebrew: preserve the upstream signature for notarized releases instead of replacing it with an ad-hoc signature. Release installation checks now use the same formula generator and verify that Homebrew leaves the signed binary unchanged.
