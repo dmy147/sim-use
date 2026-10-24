@@ -139,3 +139,33 @@ struct BundleIdentifierResolverTests {
         #expect(resolved == "")
     }
 }
+@Suite("BundleIdentifierResolver — child process hygiene")
+struct BundleIdentifierResolverProcessTests {
+
+    // The daemon leaked both pipes of every launchctl read (2 fds per
+    // `ui` call, 36 -> 636 after 300 reads), until spawning failed and every process-list read broke.
+    // Counting the process's descriptors is not reliable while other suites run in parallel, so the
+    // test records each read end's descriptor and pipe identity: after the run that descriptor is
+    // closed or, if a parallel suite reused the number, names another file.
+    @Test("Every run closes the read ends of its pipes")
+    func runsCloseTheirPipes() throws {
+        func identity(_ fd: Int32) -> (dev: dev_t, ino: ino_t)? {
+            var info = stat()
+            return fstat(fd, &info) == 0 ? (info.st_dev, info.st_ino) : nil
+        }
+        var readers: [(fd: Int32, dev: dev_t, ino: ino_t)] = []
+        let echo = URL(fileURLWithPath: "/bin/echo")
+        let output = try BundleIdentifierResolver.runCapturing(executable: echo, arguments: ["hello"], timeout: 5) {
+            let pipe = Pipe()
+            let fd = pipe.fileHandleForReading.fileDescriptor
+            if let id = identity(fd) { readers.append((fd, id.dev, id.ino)) }
+            return pipe
+        }
+        #expect(output == "hello\n")
+        #expect(readers.count == 2)
+        for reader in readers {
+            let now = identity(reader.fd)
+            #expect(now == nil || now!.dev != reader.dev || now!.ino != reader.ino, "read end \(reader.fd) is still open")
+        }
+    }
+}
