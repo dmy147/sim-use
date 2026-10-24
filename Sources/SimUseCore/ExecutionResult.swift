@@ -25,7 +25,7 @@ public struct DescribeUIResult: Codable, Equatable, Sendable {
     /// and serialising it across the daemon socket adds ~80 ms of
     /// encode/decode for stdout-only consumers. `outline` + `entries`
     /// carry everything the human / alias-cache paths need.
-    public let raw: JSONValue?
+    public var raw: JSONValue?
     public let outline: String
     public let entries: [Outline.Entry]
     public let lists: [Outline.ListSummary]

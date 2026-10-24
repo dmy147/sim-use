@@ -42,6 +42,11 @@ public protocol SimUseExecutableCommand: AsyncParsableCommand {
     /// side effects before a later query fails, so they must opt out.
     var daemonAllowsTransientRetry: Bool { get }
 
+    /// Decodes the daemon's success envelope on the client. The default
+    /// uses `JSONDecoder`; a command whose payload has a cheaper exact
+    /// decoding (Android `ui --json` raw trees) can override it.
+    func decodeDaemonSuccess(_ response: Data) throws -> DaemonClientSuccessPayload<ExecutionResult>
+
     /// The argv tail (everything after `sim-use`) that the daemon parses
     /// for this command. The daemon runs with stdin on `/dev/null` and in
     /// its own working directory, so a command that reads the caller's
@@ -84,6 +89,9 @@ extension SimUseExecutableCommand {
     // Protocol defaults.
     public var daemonBypass: Bool { false }
     public var daemonAllowsTransientRetry: Bool { true }
+    public func decodeDaemonSuccess(_ response: Data) throws -> DaemonClientSuccessPayload<ExecutionResult> {
+        try JSONDecoder().decode(DaemonClientSuccessPayload<ExecutionResult>.self, from: response)
+    }
     public func daemonArguments(from arguments: [String]) throws -> [String] { arguments }
     public var simulatorUDIDForDaemon: String? { nil }
     public var managesLivenessState: Bool { false }
@@ -213,7 +221,7 @@ extension SimUseExecutableCommand {
         let processAdvisory: ProcessAdvisory?
         let advisory: CommandAdvisory?
         do {
-            let payload = try JSONDecoder().decode(DaemonClientSuccessPayload<ExecutionResult>.self, from: responseData)
+            let payload = try decodeDaemonSuccess(responseData)
             result = payload.data
             processAdvisory = payload.processAdvisory
             advisory = payload.advisory
@@ -313,6 +321,12 @@ public struct DaemonClientSuccessPayload<T: Decodable>: Decodable {
         // decode it tolerantly instead of surfacing malformedResponse
         // for a command that succeeded.
         self.advisory = (try? container.decodeIfPresent(CommandAdvisory.self, forKey: .advisory)) ?? nil
+    }
+
+    public init(data: T, processAdvisory: ProcessAdvisory?, advisory: CommandAdvisory?) {
+        self.data = data
+        self.processAdvisory = processAdvisory
+        self.advisory = advisory
     }
 
     private enum CodingKeys: String, CodingKey { case data, process, advisory }

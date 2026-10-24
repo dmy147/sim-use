@@ -32,6 +32,10 @@ public struct AndroidDescribeUICommand: SimUseExecutableCommand {
 
     public var simulatorUDIDForDaemon: String? { device.resolved }
 
+    public func decodeDaemonSuccess(_ response: Data) throws -> DaemonClientSuccessPayload<ExecutionResult> {
+        try AndroidRawJSON.decodeDaemonSuccess(response) { $0.raw = $1 }
+    }
+
     public mutating func resolveDeferredArguments() throws {
         try device.resolve()
     }

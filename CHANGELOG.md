@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Notarized Homebrew packages retain their original Developer ID signature after installation.
 
+### Changed
+
+- Android: `ui --json` with the raw tree is much faster on large screens. The raw tree is decoded with a fast path in both the daemon and the client instead of twice with the generic decoder, saving for example about 0.24 s of host time on a 1.1 MB tree. Output is unchanged.
+
 ### Fixed
 
 - Homebrew: preserve the upstream signature for notarized releases instead of replacing it with an ad-hoc signature. Release installation checks now use the same formula generator and verify that Homebrew leaves the signed binary unchanged.

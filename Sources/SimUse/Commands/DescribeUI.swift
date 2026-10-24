@@ -90,6 +90,14 @@ struct DescribeUI: SimUseExecutableCommand {
 
     var simulatorUDIDForDaemon: String? { device.resolved }
 
+    /// Android raw trees decode through `AndroidRawJSON`'s fast path.
+    func decodeDaemonSuccess(_ response: Data) throws -> DaemonClientSuccessPayload<ExecutionResult> {
+        if jsonOutput, !noRaw, PlatformRouter.resolve(udid: device.resolved) == .android {
+            return try AndroidRawJSON.decodeDaemonSuccess(response) { $0.raw = $1 }
+        }
+        return try JSONDecoder().decode(DaemonClientSuccessPayload<ExecutionResult>.self, from: response)
+    }
+
     func validate() throws {
         try IOSSimDescribeUICommand.validatePoint(point)
         try IOSSimDescribeUICommand.validateOptions(

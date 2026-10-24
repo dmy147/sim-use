@@ -91,7 +91,7 @@ public struct IOSSimDescribeUICommand: SimUseExecutableCommand {
         /// Raw a11y tree passthrough. `nil` when the client didn't
         /// request `--json`, or opted out with `--no-raw` — the
         /// ~200 KB tree adds 80 ms of round-trip cost otherwise.
-        public let raw: JSONValue?
+        public var raw: JSONValue?
         public let outline: String
         public let entries: [Outline.Entry]
         public let lists: [Outline.ListSummary]
