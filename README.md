@@ -213,6 +213,8 @@ sim-use drives both **iOS Simulators** and **Android devices / emulators** throu
 
 For Android, run `sim-use android init --device <serial>` once to install the bridge APK. See `AGENTS.md` for Android toolchain setup. When `ADB_SERVER_SOCKET` points at an adb server on another machine (`tcp:<host>:<port>`), sim-use reaches the bridge on that host, since that is where `adb forward` listens; `SIM_USE_BRIDGE_HOST` overrides the host.
 
+`SIM_USE_VISIBLE_TREE=1` (set it when the daemon starts, or with `SIM_USE_NO_DAEMON=1`) makes Android `ui` reads without the raw tree skip the descendants of nodes that report themselves invisible, which the outline drops anyway. It is opt-in because a container covered by the soft keyboard can report itself invisible while its children are still visible; those controls then disappear from the outline. Raw reads (`--json` without `--no-raw`) always get the full tree.
+
 **Physical iPhones and iPads** (experimental) route through the same top-level verbs — `sim-use ui`, `sim-use tap '#<id>' / --label` and `sim-use screenshot` work against a plugged-in device's UDID. The channel exposes no element geometry, so it trades coordinate taps, swipes and gestures for accessibility actions, and the remaining verbs reject with the reason and the nearest alternative — never assume capability parity; see the [capability matrix](#physical-ios-devices). sim-use installs and signs no runner and needs no Developer Disk Image; `ui`/`tap` need the foreground app to be development-signed (`get-task-allow=true`), `screenshot` captures any screen.
 
 

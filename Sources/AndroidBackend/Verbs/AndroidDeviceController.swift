@@ -64,7 +64,7 @@ public final class AndroidDeviceController {
         let client = bridge(serial: serial)
         _ = try client.ping()
 
-        let rawBytes = try client.fetchTreeRaw()
+        let rawBytes = try client.fetchTreeRaw(visibleOnly: Self.visibleOnlyTreeReads(includeRaw: includeRaw))
         let decoded = try decodeTree(rawBytes)
         guard let root = decoded.root else {
             throw BridgeError.malformedEnvelope(underlying: "Bridge returned a tree without a root element")
@@ -117,6 +117,20 @@ public final class AndroidDeviceController {
             appPackage: root.package,
             crashDialog: crashDialog
         )
+    }
+
+    /// `SIM_USE_VISIBLE_TREE=1` (read where the read runs: the daemon's
+    /// environment, or the CLI's with `SIM_USE_NO_DAEMON=1`) asks the
+    /// bridge not to walk below invisible nodes, which the outline drops
+    /// anyway. Opt-in because a container covered by the soft keyboard can
+    /// report itself invisible while its children stay visible, and
+    /// pruning then drops real controls. Reads that include `raw` always
+    /// get the full tree, so the raw contract is unchanged.
+    static func visibleOnlyTreeReads(
+        includeRaw: Bool,
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        !includeRaw && environment["SIM_USE_VISIBLE_TREE"] == "1"
     }
 
     // MARK: - Init / bootstrap

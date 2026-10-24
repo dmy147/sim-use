@@ -23,10 +23,15 @@ import java.util.concurrent.RecursiveTask
  */
 class TreeHandler {
 
-    fun buildTree(root: AccessibilityNodeInfo?, filter: Boolean): ElementNode? {
+    /**
+     * With [visibleOnly] the walk keeps a node whose `isVisibleToUser` is
+     * false (its own properties included) but does not fetch its descendants.
+     */
+    fun buildTree(root: AccessibilityNodeInfo?, filter: Boolean, visibleOnly: Boolean = false): ElementNode? {
         if (root == null) return null
         val t0 = SystemClock.elapsedRealtime()
         nodeCount.set(0)
+        prunedChildren.set(0)
         try {
             // Walk the root's children in parallel via ForkJoinPool —
             // each `getChild()` is an independent Binder IPC to
@@ -35,9 +40,9 @@ class TreeHandler {
             // total walk time from ~2s to ~0.3s on emulator-5554.
             // The root itself is walked single-threaded (cheap) so we
             // can recycle it deterministically.
-            val built = forkJoinPool.invoke(BuildTask(root, filter))
+            val built = forkJoinPool.invoke(BuildTask(root, filter, visibleOnly))
             val t1 = SystemClock.elapsedRealtime()
-            Log.i(TAG, "buildTree: nodes=${nodeCount.get()}  total=${t1 - t0}ms  parallel=true")
+            Log.i(TAG, "buildTree: nodes=${nodeCount.get()}  prunedChildren=${prunedChildren.get()}  total=${t1 - t0}ms  parallel=true")
             return built
         } finally {
             safeRecycle(root)
@@ -45,10 +50,12 @@ class TreeHandler {
     }
 
     private val nodeCount = java.util.concurrent.atomic.AtomicInteger(0)
+    private val prunedChildren = java.util.concurrent.atomic.AtomicInteger(0)
 
     private inner class BuildTask(
         private val info: AccessibilityNodeInfo,
         private val filter: Boolean,
+        private val visibleOnly: Boolean,
     ) : RecursiveTask<ElementNode?>() {
         override fun compute(): ElementNode? {
             nodeCount.incrementAndGet()
@@ -63,11 +70,18 @@ class TreeHandler {
             // already collected in `tasks` would leak. Catch the
             // throw, recycle every child we've gathered so far, then
             // re-throw so the caller sees the original failure.
-            val tasks = ArrayList<Pair<BuildTask, AccessibilityNodeInfo>>(info.childCount)
+            val visible = info.isVisibleToUser
+            val childCount = if (visibleOnly && !visible) {
+                prunedChildren.addAndGet(info.childCount)
+                0
+            } else {
+                info.childCount
+            }
+            val tasks = ArrayList<Pair<BuildTask, AccessibilityNodeInfo>>(childCount)
             try {
-                for (i in 0 until info.childCount) {
+                for (i in 0 until childCount) {
                     val child = info.getChild(i) ?: continue
-                    val task = BuildTask(child, filter)
+                    val task = BuildTask(child, filter, visibleOnly)
                     task.fork()
                     tasks.add(task to child)
                 }
@@ -107,7 +121,7 @@ class TreeHandler {
                 checked = info.isChecked,
                 selected = info.isSelected,
                 password = info.isPassword,
-                visibleToUser = info.isVisibleToUser,
+                visibleToUser = visible,
                 collectionInfo = info.collectionInfo?.let {
                     ElementNode.CollectionInfo(
                         rowCount = it.rowCount,

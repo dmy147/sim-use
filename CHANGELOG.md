@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Notarized Homebrew packages retain their original Developer ID signature after installation.
 
+### Added
+
+- Android: with `SIM_USE_VISIBLE_TREE=1`, `ui` reads without the raw tree ask the bridge not to walk below nodes that report themselves invisible, which can make reads much faster on screens with large hidden subtrees. Off by default: a container covered by the soft keyboard can report itself invisible while its children stay visible, and those controls are then missing from the outline. Raw reads always get the full tree, and older bridges ignore the request.
+
 ### Fixed
 
 - Homebrew: preserve the upstream signature for notarized releases instead of replacing it with an ad-hoc signature. Release installation checks now use the same formula generator and verify that Homebrew leaves the signed binary unchanged.
