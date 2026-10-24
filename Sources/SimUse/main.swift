@@ -99,9 +99,9 @@ enum EntryPoint {
             // package allowlist, so each command costs one `adb shell`
             // (the fresh `ps`), not two (issue #81 perf follow-up).
             DaemonDispatch.livenessProbe = { AndroidProcessLister.livenessSnapshot(serial: deviceId) }
-        } else {
-            DaemonDispatch.livenessProbe = { BundleIdentifierResolver.appSnapshot(udid: deviceId) }
         }
+        // iOS wires no per-command probe: the `launchctl list` spawn cost ~270 ms per tap/swipe/type. `ui`
+        // reads the process list itself when the foreground pid changes.
     }
 }
 

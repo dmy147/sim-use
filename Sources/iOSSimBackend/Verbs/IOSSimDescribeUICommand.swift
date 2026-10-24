@@ -262,14 +262,18 @@ public struct IOSSimDescribeUICommand: SimUseExecutableCommand {
         // unreachable, system root, etc.); consumers treat appPackage
         // as a hint. Resolved *before* rendering so the outline header
         // can be reconciled against the real foreground app rather than
-        // the (possibly stale/empty) AX-root label (issue #81). Reuses
-        // the daemon's just-taken liveness snapshot to avoid a second
-        // `launchctl` spawn when the root pid is already known.
-        let appPackage = BundleIdentifierResolver.resolve(
-            udid: device.resolved,
-            rootElement: typedTree.first,
-            cachedSnapshot: DaemonDispatch.lastLivenessSnapshot
+        // the (possibly stale/empty) AX-root label (issue #81). The
+        // process list is read only when the root pid changed; that read also feeds the crash tracker.
+        let udid = device.resolved
+        let (appPackage, snapshot) = BundleIdentifierResolver.foregroundCache.resolve(
+            rootPid: typedTree.first?.pid,
+            listProcesses: { BundleIdentifierResolver.launchctlList(udid: udid) }
         )
+        if ProcessInfo.processInfo.environment["SIM_USE_NO_CRASH_DETECT"] != "1" {
+            DaemonDispatch.commandProcessAdvisory = DaemonDispatch.foregroundAdvisory(
+                snapshot: snapshot, tracker: DaemonDispatch.processTracker, now: Date()
+            )
+        }
         let orientation = fetchResult.calibration?.orientation
         let routing = fetchResult.routing
         // Off the main display the interface size comes from CoreDevice:

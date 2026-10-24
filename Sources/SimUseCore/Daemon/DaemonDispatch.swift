@@ -66,8 +66,9 @@ public enum DaemonDispatch {
     public static var commandParser: (@MainActor ([String]) throws -> ParsableCommand)?
 
     /// Platform-specific live-app probe, injected at daemon start
-    /// (iOS: `launchctl list`; Android: `adb shell ps`). When nil,
-    /// process-liveness detection is disabled (issue #81). A probe that
+    /// (Android: `adb shell ps`). When nil, dispatch runs no
+    /// per-command probe (issue #81); iOS wires none and `ui` reads the
+    /// process list on a foreground change. A probe that
     /// returns `nil` means it could not read the process list (transient
     /// failure / timeout) — distinct from an empty device; the tracker
     /// skips such commands rather than reporting a phantom disappearance.
@@ -79,14 +80,11 @@ public enum DaemonDispatch {
     /// hop while keeping the access genuinely single-threaded.
     nonisolated(unsafe) public static var livenessProbe: (() -> AppSnapshot?)?
 
-    /// The liveness snapshot taken for the command currently being
-    /// dispatched, or nil when no probe ran this command (detection
-    /// disabled, no probe wired, the owning command manages the tracker
-    /// itself, or the probe failed). `describe-ui` reuses it to resolve
-    /// the foreground bundle id without a second `launchctl` spawn (issue
-    /// #81 perf follow-up). Reset on every dispatched command; daemon
-    /// serialisation makes the single-writer / single-reader access safe.
-    nonisolated(unsafe) public static var lastLivenessSnapshot: AppSnapshot?
+    /// Process advisory produced by the command itself rather than by the
+    /// per-command probe: iOS `ui` reads the process list when the AX root
+    /// pid changed. Reset before every dispatched command; attached to the response when dispatch ran no
+    /// probe. Daemon serialisation makes the access safe.
+    nonisolated(unsafe) public static var commandProcessAdvisory: ProcessAdvisory?
 
     /// Cross-command crash/termination detector. The daemon serves a
     /// single device, so one tracker per process is correct. Shared so
@@ -103,21 +101,27 @@ public enum DaemonDispatch {
 
     /// Probe + evaluate the tracker for this command, unless detection is
     /// disabled, no probe is wired, or the command owns the tracker
-    /// itself (`app-state`). Always refreshes `lastLivenessSnapshot` so a
-    /// command can only ever reuse a snapshot taken for itself.
+    /// itself (`app-state`).
     private static func processAdvisory(
         for executable: any SimUseExecutableCommand
     ) -> ProcessAdvisory? {
         guard let probe = livenessProbe,
               ProcessInfo.processInfo.environment["SIM_USE_NO_CRASH_DETECT"] != "1",
               !executable.managesLivenessState
-        else {
-            lastLivenessSnapshot = nil
-            return nil
-        }
-        let snapshot = probe()
-        lastLivenessSnapshot = snapshot
-        return evaluateAdvisory(snapshot: snapshot, tracker: processTracker, now: Date())
+        else { return nil }
+        return evaluateAdvisory(snapshot: probe(), tracker: processTracker, now: Date())
+    }
+
+    /// Advisory for a command that read the process list itself (iOS `ui`).
+    /// A fresh snapshot is diffed like a probe; without one (cache hit or a
+    /// failed read) only a still-latched disappearance is repeated.
+    nonisolated public static func foregroundAdvisory(
+        snapshot: AppSnapshot?,
+        tracker: ProcessLivenessTracker,
+        now: Date
+    ) -> ProcessAdvisory? {
+        if let snapshot { return evaluateAdvisory(snapshot: snapshot, tracker: tracker, now: now) }
+        return tracker.pending.isEmpty ? nil : ProcessAdvisory(events: [], pending: Array(tracker.pending.values))
     }
 
     /// Pure tracker step, isolated for unit testing. A `nil` snapshot
@@ -126,7 +130,7 @@ public enum DaemonDispatch {
     /// transient probe failure can't fake a mass "disappeared" the way an
     /// empty snapshot would (issue #81). A real snapshot is diffed and any
     /// non-empty advisory returned.
-    nonisolated static func evaluateAdvisory(
+    nonisolated public static func evaluateAdvisory(
         snapshot: AppSnapshot?,
         tracker: ProcessLivenessTracker,
         now: Date
@@ -173,7 +177,10 @@ public enum DaemonDispatch {
             )
         }
 
+        commandProcessAdvisory = nil
         let advisory = processAdvisory(for: executable)
+        // iOS wires no per-command probe; each command still counts as activity for the crash window.
+        defer { if livenessProbe == nil { processTracker.touch(now: Date()) } }
         do {
             let data = try await executable.executeAsDaemonResponse(id: request.id, processAdvisory: advisory)
             return Outcome(responseData: data, shouldStopDaemon: false)

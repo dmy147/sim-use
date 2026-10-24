@@ -20,7 +20,7 @@ extension SimUseExecutableCommand {
         let envelope = DaemonSuccessResponse(
             id: id,
             data: result,
-            processAdvisory: processAdvisory,
+            processAdvisory: processAdvisory ?? DaemonDispatch.commandProcessAdvisory,
             advisory: (result as? CommandAdvisoryProviding)?.commandAdvisory
         )
         let encoder = JSONEncoder()

@@ -125,3 +125,26 @@ struct ProcessLivenessTrackerTests {
         #expect(s.liveness(ofBundleId: "com.absent.app") == .dead)
     }
 }
+/// iOS commands no longer probe, so each one only marks activity.
+@Suite("ProcessLivenessTracker.touch")
+struct ProcessLivenessTrackerTouchTests {
+    private let t0 = Date(timeIntervalSince1970: 1_000_000)
+
+    @Test("Activity keeps a later disappearance inside the active window")
+    func touchKeepsHighConfidence() {
+        let tracker = ProcessLivenessTracker(activeWindow: 120)
+        tracker.evaluate(current: AppSnapshot(appsByPid: [1: "com.x"]), now: t0)
+        tracker.touch(now: t0.addingTimeInterval(100))
+        tracker.touch(now: t0.addingTimeInterval(200))
+        let events = tracker.evaluate(current: AppSnapshot(appsByPid: [:]), now: t0.addingTimeInterval(250))
+        #expect(events.map(\.kind) == [.disappeared])
+        #expect(tracker.previousAt == t0.addingTimeInterval(250))
+    }
+
+    @Test("Touch before any baseline does nothing")
+    func touchWithoutBaseline() {
+        let tracker = ProcessLivenessTracker(activeWindow: 120)
+        tracker.touch(now: t0)
+        #expect(tracker.previous == nil && tracker.previousAt == nil)
+    }
+}

@@ -16,33 +16,12 @@ import SimUseCore
 /// resolve is non-fatal.
 public enum BundleIdentifierResolver {
 
-    /// Production resolver. Pulls pid from the root element and shells
-    /// out to simctl.
-    public static func resolve(udid: String, rootElement: AccessibilityElement?) -> String {
-        guard let pid = rootElement?.pid, pid > 0 else { return "" }
-        guard let output = try? runLaunchctlList(udid: udid) else { return "" }
-        return parseForeground(launchctlOutput: output, pid: pid) ?? ""
-    }
+    /// The daemon's foreground cache (one device per daemon; requests are served serially).
+    nonisolated(unsafe) public static let foregroundCache = ForegroundAppCache()
 
-    /// Foreground resolver that reuses a liveness snapshot when it already
-    /// carries the root pid, saving a redundant `launchctl` spawn on the
-    /// describe-ui hot path (the daemon probes liveness right before the
-    /// command runs — issue #81 perf follow-up). A miss (no root pid, or a
-    /// pid the liveness probe excludes — SpringBoard's daemon label) falls
-    /// back to a fresh `resolve`, so the crashed-to-home header stays
-    /// correct. `cachedSnapshot == nil` (standalone, probe failed, or
-    /// detection disabled) is always a fresh resolve — no behavioural
-    /// change from the un-cached path.
-    public static func resolve(
-        udid: String,
-        rootElement: AccessibilityElement?,
-        cachedSnapshot: AppSnapshot?
-    ) -> String {
-        if let pid = rootElement?.pid, pid > 0,
-           let bundleId = cachedSnapshot?.appsByPid[pid] {
-            return bundleId
-        }
-        return resolve(udid: udid, rootElement: rootElement)
+    /// `launchctl list` output, or nil when it could not be read.
+    public static func launchctlList(udid: String) -> String? {
+        try? runLaunchctlList(udid: udid)
     }
 
     /// Parser exposed for tests. Returns the bundle id when the input
@@ -205,5 +184,26 @@ public enum BundleIdentifierResolver {
         }
         let data = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
         return String(data: data, encoding: .utf8) ?? ""
+    }
+}
+
+/// Root pid -> foreground bundle id of the last process-list read.
+/// The AX root pid changes whenever the foreground app changes, crashes to SpringBoard or relaunches,
+/// so a read with the same root pid reuses the bundle id and spawns no `launchctl list` (~270 ms).
+/// Empty results and failed reads are not cached.
+public final class ForegroundAppCache {
+    private var entry: (pid: Int, bundleId: String)?
+
+    public init() {}
+
+    /// `snapshot` is the fresh process list when one was read (for the crash tracker), nil on a cache
+    /// hit, without a root pid, or when the list could not be read.
+    public func resolve(rootPid: Int?, listProcesses: () -> String?) -> (bundleId: String, snapshot: AppSnapshot?) {
+        guard let pid = rootPid, pid > 0 else { return ("", nil) }
+        if let entry, entry.pid == pid { return (entry.bundleId, nil) }
+        guard let output = listProcesses() else { return ("", nil) }
+        let bundleId = BundleIdentifierResolver.parseForeground(launchctlOutput: output, pid: pid) ?? ""
+        entry = bundleId.isEmpty ? nil : (pid, bundleId)
+        return (bundleId, AppSnapshot(appsByPid: BundleIdentifierResolver.appsByPid(launchctlOutput: output)))
     }
 }

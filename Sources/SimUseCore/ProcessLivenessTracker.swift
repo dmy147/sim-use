@@ -160,6 +160,14 @@ public final class ProcessLivenessTracker {
         return events
     }
 
+    /// Mark a command that read no process list as activity, so a later
+    /// diff is judged against the active window from this command (iOS
+    /// commands no longer probe). The
+    /// baseline is kept. No-op before the first snapshot.
+    public func touch(now: Date) {
+        if previous != nil { previousAt = now }
+    }
+
     /// Re-baseline to `current` and clear the latch. This is the single
     /// primitive behind `app-state --reset`: acknowledging an accepted
     /// crash, establishing a baseline after an external launch, or

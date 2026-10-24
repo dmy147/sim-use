@@ -110,34 +110,6 @@ struct BundleIdentifierResolverTests {
         #expect(BundleIdentifierResolver.parse(launchctlOutput: output, pid: 51146) == nil)
         #expect(BundleIdentifierResolver.parseForeground(launchctlOutput: output, pid: 51950) == "com.apple.mobilesafari")
     }
-
-    // MARK: - Foreground resolution reusing the daemon's liveness snapshot
-
-    private func element(pid: Int?) throws -> AccessibilityElement {
-        let json = pid.map { "{\"pid\":\($0)}" } ?? "{}"
-        return try JSONDecoder().decode(AccessibilityElement.self, from: Data(json.utf8))
-    }
-
-    @Test("resolve reuses a cached snapshot that already carries the root pid (no launchctl)")
-    func resolveReusesCachedSnapshot() throws {
-        let root = try element(pid: 99)
-        let snapshot = AppSnapshot(appsByPid: [99: "com.cached.app"])
-        let resolved = BundleIdentifierResolver.resolve(
-            udid: "UNREACHABLE-UDID", rootElement: root, cachedSnapshot: snapshot
-        )
-        #expect(resolved == "com.cached.app")
-    }
-
-    @Test("resolve falls back (and stays I/O-cheap) when the root has no pid")
-    func resolveFallsBackWithoutPid() throws {
-        let root = try element(pid: nil)
-        // No pid → the fast guard in the underlying resolver returns ""
-        // without spawning launchctl, regardless of the cached snapshot.
-        let resolved = BundleIdentifierResolver.resolve(
-            udid: "UNREACHABLE-UDID", rootElement: root, cachedSnapshot: AppSnapshot(appsByPid: [1: "x"])
-        )
-        #expect(resolved == "")
-    }
 }
 @Suite("BundleIdentifierResolver — child process hygiene")
 struct BundleIdentifierResolverProcessTests {
