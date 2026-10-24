@@ -89,10 +89,12 @@ public final class AndroidDeviceController {
         return result
     }
 
-    /// Every `ui` read asks the bridge not to descend into invisible
-    /// subtrees; `SIM_USE_FULL_TREE=1` (read where the read runs, i.e. the daemon's env) restores the full walk.
+    /// `ui` reads ask the bridge not to descend into invisible subtrees
+    /// only with `SIM_USE_VISIBLE_TREE=1` (read where the read runs, i.e. the daemon's env). Off by default:
+    /// a container covered by the keyboard reports itself invisible while its children stay visible, so
+    /// pruning dropped real controls, and the walk saved only ~12%.
     static func visibleOnlyTreeReads(environment: [String: String] = ProcessInfo.processInfo.environment) -> Bool {
-        environment["SIM_USE_FULL_TREE"] != "1"
+        environment["SIM_USE_VISIBLE_TREE"] == "1"
     }
 
     /// Bridge tree bytes → result, without device access (split out for tests).

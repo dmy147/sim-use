@@ -14,9 +14,11 @@ final class AndroidVisibleTreeTests: XCTestCase {
         XCTAssertEqual(BridgeClient.treePath(filter: true, visibleOnly: false), "/a11y_tree_full?filter=true")
     }
 
-    func testUIReadsAreVisibleOnlyUnlessFullTreeIsRequested() {
-        XCTAssertTrue(AndroidDeviceController.visibleOnlyTreeReads(environment: [:]))
-        XCTAssertTrue(AndroidDeviceController.visibleOnlyTreeReads(environment: ["SIM_USE_FULL_TREE": "0"]))
-        XCTAssertFalse(AndroidDeviceController.visibleOnlyTreeReads(environment: ["SIM_USE_FULL_TREE": "1"]))
+    /// Pruning is opt-in. It dropped visible controls under an IME-covered container that
+    /// reports itself invisible, and saved only ~12% of the walk.
+    func testUIReadsAreFullUnlessVisibleOnlyIsRequested() {
+        XCTAssertFalse(AndroidDeviceController.visibleOnlyTreeReads(environment: [:]))
+        XCTAssertFalse(AndroidDeviceController.visibleOnlyTreeReads(environment: ["SIM_USE_VISIBLE_TREE": "0"]))
+        XCTAssertTrue(AndroidDeviceController.visibleOnlyTreeReads(environment: ["SIM_USE_VISIBLE_TREE": "1"]))
     }
 }
