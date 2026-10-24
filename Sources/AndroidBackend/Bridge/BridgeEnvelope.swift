@@ -59,11 +59,17 @@ public struct PingResult: Decodable, Equatable, Sendable {
     public let result: String
     public let protocolVersion: Int
     public let bridgeVersion: String
+    /// Additive capabilities the bridge advertises (for example
+    /// `swipe.hold`), so an optional request field can be refused on the
+    /// host instead of being ignored by an older bridge. Empty when the
+    /// bridge predates the field.
+    public let features: [String]
 
     enum CodingKeys: String, CodingKey {
         case result
         case protocolVersion = "protocol_version"
         case bridgeVersion = "bridge_version"
+        case features
     }
 
     public init(from decoder: Decoder) throws {
@@ -71,12 +77,14 @@ public struct PingResult: Decodable, Equatable, Sendable {
         result = try container.decode(String.self, forKey: .result)
         protocolVersion = try container.decode(Int.self, forKey: .protocolVersion)
         bridgeVersion = try container.decode(String.self, forKey: .bridgeVersion)
+        features = try container.decodeIfPresent([String].self, forKey: .features) ?? []
     }
 
-    public init(result: String, protocolVersion: Int, bridgeVersion: String) {
+    public init(result: String, protocolVersion: Int, bridgeVersion: String, features: [String] = []) {
         self.result = result
         self.protocolVersion = protocolVersion
         self.bridgeVersion = bridgeVersion
+        self.features = features
     }
 }
 

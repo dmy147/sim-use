@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Notarized Homebrew packages retain their original Developer ID signature after installation.
 
+### Added
+
+- Android: `android swipe --hold <seconds>` keeps the finger still at the end of the drag before lifting, so lists stop where the finger stops instead of flinging. The bridge now lists optional capabilities in `/ping` `features`, and the CLI refuses `--hold` with a bridge that does not advertise `swipe.hold` instead of letting it fling. Re-run `sim-use android init` to update the bridge.
+
 ### Fixed
 
 - Homebrew: preserve the upstream signature for notarized releases instead of replacing it with an ad-hoc signature. Release installation checks now use the same formula generator and verify that Homebrew leaves the signed binary unchanged.

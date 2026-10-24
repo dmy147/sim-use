@@ -110,6 +110,9 @@ class ActionRouter(
             put("result", "pong")
             put("protocol_version", BuildConfig.PROTOCOL_VERSION)
             put("bridge_version", BuildConfig.VERSION_NAME)
+            // Additive capabilities, so the host can refuse an optional
+            // field this bridge would otherwise ignore.
+            put("features", JSONArray(FEATURES))
         }
         return HttpResponse(200, payload.toString())
     }
@@ -325,7 +328,13 @@ class ActionRouter(
         val endX = params["endX"]?.toFloatOrNull() ?: return badRequest("missing_endX")
         val endY = params["endY"]?.toFloatOrNull() ?: return badRequest("missing_endY")
         val duration = params["duration"]?.toLongOrNull() ?: DEFAULT_SWIPE_DURATION
-        val ok = gestureHandler.swipe(service, startX, startY, endX, endY, duration)
+        // Optional hold (ms) at the end before lifting; advertised as `swipe.hold`.
+        val hold = params["hold"]?.toLongOrNull() ?: 0L
+        val ok = if (hold > 0) {
+            gestureHandler.dragAndHold(service, startX, startY, endX, endY, duration, hold)
+        } else {
+            gestureHandler.swipe(service, startX, startY, endX, endY, duration)
+        }
         return if (ok) HttpResponse(200, successJson()) else HttpResponse(500, errorJson("swipe_failed"))
     }
 
@@ -598,6 +607,9 @@ class ActionRouter(
     companion object {
         private const val TAG = "SimuseRouter"
         private const val DEFAULT_SWIPE_DURATION = 300L
+
+        /** `/ping` `features`: optional request fields this bridge honours. */
+        val FEATURES = listOf("swipe.hold")
         private const val ROOT_WINDOW_TIMEOUT_SECONDS = 5L
         private const val ROOT_WINDOW_WAIT_SECONDS = 2L
 

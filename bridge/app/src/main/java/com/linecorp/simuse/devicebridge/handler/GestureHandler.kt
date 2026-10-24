@@ -5,6 +5,8 @@ import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.GestureDescription
 import android.graphics.Path
 import android.util.Log
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Dispatches touch gestures via `AccessibilityService.dispatchGesture()`.
@@ -44,6 +46,69 @@ class GestureHandler {
         val stroke = GestureDescription.StrokeDescription(path, 0, clamped)
         return dispatch(service, GestureDescription.Builder().addStroke(stroke).build(),
             "swipe($startX,$startY -> $endX,$endY)")
+    }
+
+    /**
+     * Drag from start to end over [moveMs], then keep the pointer
+     * still for [holdMs] before lifting, so the release velocity is ~0 and lists do not fling. Unlike
+     * the other gestures this waits for each part: the hold must continue a completed drag, and the
+     * caller observes only after the whole gesture.
+     */
+    fun dragAndHold(
+        service: AccessibilityService,
+        startX: Float,
+        startY: Float,
+        endX: Float,
+        endY: Float,
+        moveMs: Long,
+        holdMs: Long,
+    ): Boolean {
+        val move = Path().apply {
+            moveTo(startX, startY)
+            lineTo(endX, endY)
+        }
+        val drag = GestureDescription.StrokeDescription(move, 0, clampSwipeDuration(moveMs), true)
+        if (!dispatchAndWait(service, drag, moveMs, "drag($startX,$startY -> $endX,$endY)")) return false
+        val still = Path().apply {
+            moveTo(endX, endY)
+            lineTo(endX, endY)
+        }
+        val hold = drag.continueStroke(still, 0, clampSwipeDuration(holdMs), false)
+        return dispatchAndWait(service, hold, holdMs, "hold($endX,$endY)")
+    }
+
+    private fun dispatchAndWait(
+        service: AccessibilityService,
+        stroke: GestureDescription.StrokeDescription,
+        durationMs: Long,
+        label: String,
+    ): Boolean {
+        val builder = GestureDescription.Builder()
+        builder.addStroke(stroke)
+        val done = CountDownLatch(1)
+        var completed = false
+        val callback = object : AccessibilityService.GestureResultCallback() {
+            override fun onCompleted(gestureDescription: GestureDescription?) {
+                completed = true
+                done.countDown()
+            }
+
+            override fun onCancelled(gestureDescription: GestureDescription?) {
+                done.countDown()
+            }
+        }
+        return try {
+            if (!service.dispatchGesture(builder.build(), callback, null)) {
+                Log.d(TAG, "$label rejected")
+                return false
+            }
+            val finished = done.await(durationMs + GESTURE_WAIT_SLACK_MS, TimeUnit.MILLISECONDS)
+            Log.d(TAG, "$label finished=$finished completed=$completed")
+            finished && completed
+        } catch (e: Exception) {
+            Log.e(TAG, "$label failed", e)
+            false
+        }
     }
 
     fun gesture(service: AccessibilityService, strokes: List<StrokeParams>): Boolean {
@@ -112,6 +177,8 @@ class GestureHandler {
         // itself accepts far longer strokes.
         internal const val MIN_SWIPE_DURATION = 10L
         internal const val MAX_SWIPE_DURATION = 10_000L
+        // Completion callbacks arrive on the main thread; allow for its scheduling on a busy device.
+        private const val GESTURE_WAIT_SLACK_MS = 2_000L
 
         internal fun clampSwipeDuration(duration: Long): Long =
             duration.coerceIn(MIN_SWIPE_DURATION, MAX_SWIPE_DURATION)

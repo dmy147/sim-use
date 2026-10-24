@@ -68,6 +68,8 @@ public final class BridgeClient: @unchecked Sendable {
     private var restoredPortUnconfirmed = false
     private var cachedAuthToken: String?
     private var verifiedProtocolVersion: Bool = false
+    /// `features` of the last verified `/ping`.
+    private var verifiedFeatures: [String] = []
     private var cachedDisplay: DisplayMetrics?
 
     public init(
@@ -133,9 +135,10 @@ public final class BridgeClient: @unchecked Sendable {
         // per request that previously called `ping()` defensively.
         lock.lock()
         let alreadyVerified = verifiedProtocolVersion
+        let features = verifiedFeatures
         lock.unlock()
         if alreadyVerified && !force {
-            return PingResult(result: "pong", protocolVersion: Self.expectedProtocolVersion, bridgeVersion: "")
+            return PingResult(result: "pong", protocolVersion: Self.expectedProtocolVersion, bridgeVersion: "", features: features)
         }
 
         let request = try buildRequest(method: "GET", path: "/ping", requiresAuth: false, body: nil, contentType: nil)
@@ -168,7 +171,7 @@ public final class BridgeClient: @unchecked Sendable {
                 udid: serial
             )
         }
-        lock.lock(); verifiedProtocolVersion = true; lock.unlock()
+        lock.lock(); verifiedProtocolVersion = true; verifiedFeatures = result.features; lock.unlock()
         return result
     }
 
@@ -217,10 +220,30 @@ public final class BridgeClient: @unchecked Sendable {
         try sendNoResult(method: "POST", path: "/tap", body: body, contentType: "application/x-www-form-urlencoded")
     }
 
+    static let swipeHoldFeature = "swipe.hold"
+
+    /// Refuse an optional request field the bridge does not advertise in
+    /// `/ping` `features`: an older bridge would ignore it silently.
+    static func requireFeature(_ feature: String, option: String, advertised: [String]) throws {
+        guard advertised.contains(feature) else {
+            throw CLIError(errorDescription: "The device bridge does not support `\(option)` (its /ping does not list the \"\(feature)\" feature). Run `sim-use android init --device <serial>` to install the bridge APK that matches this CLI.")
+        }
+    }
+
     /// `POST /swipe`.
-    public func swipe(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Int) throws {
-        let body = "startX=\(startX)&startY=\(startY)&endX=\(endX)&endY=\(endY)&duration=\(durationMs)".data(using: .utf8)!
-        try sendNoResult(method: "POST", path: "/swipe", body: body, contentType: "application/x-www-form-urlencoded")
+    public func swipe(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Int, holdMs: Int = 0) throws {
+        if holdMs > 0 {
+            try Self.requireFeature(Self.swipeHoldFeature, option: "swipe --hold", advertised: ping().features)
+        }
+        let body = Self.swipeBody(startX: startX, startY: startY, endX: endX, endY: endY, durationMs: durationMs, holdMs: holdMs)
+        try sendNoResult(method: "POST", path: "/swipe", body: Data(body.utf8), contentType: "application/x-www-form-urlencoded")
+    }
+
+    /// `hold` (ms): the bridge holds still before lifting. A bridge that
+    /// does not advertise `swipe.hold` would ignore the field and fling.
+    static func swipeBody(startX: Int, startY: Int, endX: Int, endY: Int, durationMs: Int, holdMs: Int) -> String {
+        let base = "startX=\(startX)&startY=\(startY)&endX=\(endX)&endY=\(endY)&duration=\(durationMs)"
+        return holdMs > 0 ? base + "&hold=\(holdMs)" : base
     }
 
     /// `POST /gesture` — multi-stroke gesture dispatched in parallel

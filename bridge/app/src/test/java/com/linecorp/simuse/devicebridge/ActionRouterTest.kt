@@ -55,6 +55,8 @@ class ActionRouterTest {
         // clients can verify compatibility without an authed call.
         assertTrue("protocol_version field present", json.has("protocol_version"))
         assertTrue("bridge_version field present", json.has("bridge_version"))
+        val features = json.getJSONArray("features")
+        assertTrue("swipe.hold advertised", (0 until features.length()).any { features.getString(it) == "swipe.hold" })
     }
 
     // ── Auth gate ───────────────────────────────────────────────
