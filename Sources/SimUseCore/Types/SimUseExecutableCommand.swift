@@ -41,6 +41,8 @@ public protocol SimUseExecutableCommand: AsyncParsableCommand {
     /// the complete request. Multi-step commands can have completed earlier
     /// side effects before a later query fails, so they must opt out.
     var daemonAllowsTransientRetry: Bool { get }
+    /// Opt-in for commands whose validated daemon success envelope is already CLI JSON.
+    func canForwardDaemonJSON(_ response: Data) -> Bool
 
     /// The argv tail (everything after `sim-use`) that the daemon parses
     /// for this command. The daemon runs with stdin on `/dev/null` and in
@@ -84,6 +86,7 @@ extension SimUseExecutableCommand {
     // Protocol defaults.
     public var daemonBypass: Bool { false }
     public var daemonAllowsTransientRetry: Bool { true }
+    public func canForwardDaemonJSON(_ response: Data) -> Bool { false }
     public func daemonArguments(from arguments: [String]) throws -> [String] { arguments }
     public var simulatorUDIDForDaemon: String? { nil }
     public var managesLivenessState: Bool { false }
@@ -98,7 +101,13 @@ extension SimUseExecutableCommand {
             do {
                 try resolveDeferredArguments()
                 await clientPreflight()
-                let resolved = try await resolveExecutionResult()
+                let responseData = try await resolveDaemonResponse()
+                if let responseData, canForwardDaemonJSON(responseData) {
+                    FileHandle.standardOutput.write(responseData)
+                    FileHandle.standardOutput.write(Data([0x0A]))
+                    return
+                }
+                let resolved = try await resolveExecutionResult(responseData: responseData)
                 try emitJSONSuccess(
                     resolved.result,
                     processAdvisory: resolved.processAdvisory,
@@ -112,7 +121,8 @@ extension SimUseExecutableCommand {
             do {
                 try resolveDeferredArguments()
                 await clientPreflight()
-                let resolved = try await resolveExecutionResult()
+                let responseData = try await resolveDaemonResponse()
+                let resolved = try await resolveExecutionResult(responseData: responseData)
                 let result = resolved.result
                 let tResolved = DispatchTime.now()
                 // Loud/level process-liveness banner goes ABOVE the
@@ -158,16 +168,8 @@ extension SimUseExecutableCommand {
         }
     }
 
-    /// Route the command through the daemon if it's a candidate and a
-    /// daemon is (or can be) running, else run the work in-process.
-    /// Failures inside the daemon path are *not* retried in-process:
-    /// they are surfaced verbatim so the user sees the same error the
-    /// daemon would have produced.
-    private func resolveExecutionResult() async throws -> (
-        result: ExecutionResult,
-        processAdvisory: ProcessAdvisory?,
-        advisory: CommandAdvisory?
-    ) {
+    /// Invoke once; nil selects the existing in-process execution path.
+    private func resolveDaemonResponse() async throws -> Data? {
         // Physical iOS devices run in-process for now: the per-UDID
         // daemon cannot hold their DTX session across requests yet
         // (#120), and spawning one just to relay a rejection or a
@@ -175,10 +177,7 @@ extension SimUseExecutableCommand {
         // Remove this exclusion when #120 lands.
         guard shouldUseDaemon, let udid = simulatorUDIDForDaemon,
               !PlatformRouter.looksLikePhysicalIOSDevice(udid) else {
-            // In-process (standalone) path has no persistent tracker, so
-            // it carries no cross-command process advisory.
-            let result = try await execute()
-            return (result, nil, (result as? CommandAdvisoryProviding)?.commandAdvisory)
+            return nil
         }
 
         let perf = ProcessInfo.processInfo.environment["SIM_USE_CLIENT_PERF"] == "1"
@@ -209,6 +208,28 @@ extension SimUseExecutableCommand {
         )
         let t1 = DispatchTime.now()
 
+        if perf {
+            let daemonMs = Double(t1.uptimeNanoseconds &- t0.uptimeNanoseconds) / 1_000_000
+            FileHandle.standardError.write(Data(
+                String(format: "[perf] daemon-roundtrip=%.1fms payload=%dB\n",
+                       daemonMs, responseData.count).utf8
+            ))
+        }
+        return responseData
+    }
+
+    private func resolveExecutionResult(responseData: Data?) async throws -> (
+        result: ExecutionResult,
+        processAdvisory: ProcessAdvisory?,
+        advisory: CommandAdvisory?
+    ) {
+        guard let responseData else {
+            // Standalone execution has no persistent process-liveness tracker.
+            let result = try await execute()
+            return (result, nil, (result as? CommandAdvisoryProviding)?.commandAdvisory)
+        }
+        let t1 = DispatchTime.now()
+
         let result: ExecutionResult
         let processAdvisory: ProcessAdvisory?
         let advisory: CommandAdvisory?
@@ -222,12 +243,11 @@ extension SimUseExecutableCommand {
         }
         let t2 = DispatchTime.now()
 
-        if perf {
-            let daemonMs = Double(t1.uptimeNanoseconds &- t0.uptimeNanoseconds) / 1_000_000
+        if ProcessInfo.processInfo.environment["SIM_USE_CLIENT_PERF"] == "1" {
             let decodeMs = Double(t2.uptimeNanoseconds &- t1.uptimeNanoseconds) / 1_000_000
             FileHandle.standardError.write(Data(
-                String(format: "[perf] daemon-roundtrip=%.1fms decode=%.1fms payload=%dB\n",
-                       daemonMs, decodeMs, responseData.count).utf8
+                String(format: "[perf] decode=%.1fms payload=%dB\n",
+                       decodeMs, responseData.count).utf8
             ))
         }
 

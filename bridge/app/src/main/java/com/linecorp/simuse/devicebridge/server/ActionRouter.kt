@@ -11,6 +11,7 @@ import android.view.accessibility.AccessibilityWindowInfo
 import com.linecorp.simuse.devicebridge.BuildConfig
 import com.linecorp.simuse.devicebridge.config.AuthManager
 import com.linecorp.simuse.devicebridge.handler.CaptureHandler
+import com.linecorp.simuse.devicebridge.handler.CheckedTapHandler
 import com.linecorp.simuse.devicebridge.handler.GestureHandler
 import com.linecorp.simuse.devicebridge.handler.InputHandler
 import com.linecorp.simuse.devicebridge.handler.KeyboardStateHandler
@@ -50,6 +51,7 @@ class ActionRouter(
     private val treeHandler = TreeHandler()
     private val captureHandler = CaptureHandler()
     private val gestureHandler = GestureHandler()
+    private val checkedTapHandler = CheckedTapHandler(gestureHandler::tap)
     private val inputHandler = InputHandler()
     private val keyboardStateHandler = KeyboardStateHandler()
     private val pasteHandler = PasteHandler()
@@ -93,6 +95,7 @@ class ActionRouter(
         method == "GET" && path == "/screenshot" -> handleScreenshot()
         method == "GET" && path == "/a11y_tree_full" -> handleTree(params)
         method == "POST" && path == "/tap" -> handleTap(params)
+        method == "POST" && path == "/tap_node" -> handleCheckedTap(params)
         method == "POST" && path == "/swipe" -> handleSwipe(params)
         method == "POST" && path == "/gesture" -> handleGesture(params)
         method == "POST" && path == "/keyboard/input" -> handleInput(params)
@@ -316,6 +319,22 @@ class ActionRouter(
         val y = params["y"]?.toFloatOrNull() ?: return badRequest("missing_y")
         val ok = gestureHandler.tap(service, x, y)
         return if (ok) HttpResponse(200, successJson()) else HttpResponse(500, errorJson("tap_failed"))
+    }
+
+    private fun handleCheckedTap(params: Map<String, String>): HttpResponse {
+        val service = requireService() ?: return serviceUnavailable()
+        val encodedSpec = params["spec"] ?: return badRequest("missing_spec")
+        val spec = try {
+            CheckedTapHandler.Spec.parse(encodedSpec)
+        } catch (error: Exception) {
+            return badRequest("invalid_spec", error.message)
+        }
+        val display = computeDisplay(service)
+        val bounds = CheckedTapHandler.Bounds(0, 0, display.getInt("width"), display.getInt("height"))
+        return when (val result = checkedTapHandler.tap(service, spec, bounds)) {
+            is CheckedTapHandler.Result.Tapped -> HttpResponse(200, successJson(result.data))
+            is CheckedTapHandler.Result.Refused -> HttpResponse(409, result.toJson().toString())
+        }
     }
 
     private fun handleSwipe(params: Map<String, String>): HttpResponse {

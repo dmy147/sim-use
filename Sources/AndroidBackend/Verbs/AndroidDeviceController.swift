@@ -87,11 +87,8 @@ public final class AndroidDeviceController {
             outlineText = outline.text
         }
 
-        // Parsing the wire bytes into a `JSONValue` is ~30 ms on a
-        // 200 KB tree, and encoding it across the daemon socket is
-        // another ~80 ms. Only pay that cost when the caller has asked
-        // for `--json` output (the only consumer of `raw`).
-        let rawJSON: JSONValue? = includeRaw ? try JSONValue.decode(from: rawBytes) : nil
+        // Foundation avoids recursive try-each-type decoding for ordinary bridge integers.
+        let rawJSON: JSONValue? = includeRaw ? try AndroidRawJSON.decode(from: rawBytes) : nil
 
         do {
             try OutlineCache.write(outline: outline, udid: serial)

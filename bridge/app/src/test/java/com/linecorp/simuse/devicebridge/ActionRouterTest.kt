@@ -69,6 +69,22 @@ class ActionRouterTest {
     }
 
     @Test
+    fun checkedTapRequiresAuthAndStrictSpec() {
+        assertEquals(401, router.route("POST", "/tap_node", emptyMap(), unauthed()).statusCode)
+        val available = ActionRouter(serviceProvider = { mockk<AccessibilityService>(relaxed = true) }, authManager = authManager)
+        try {
+            val missing = available.route("POST", "/tap_node", emptyMap(), authed())
+            assertEquals(400, missing.statusCode)
+            assertEquals("missing_spec", JSONObject(missing.body).getString("code"))
+            val malformed = available.route("POST", "/tap_node", mapOf("spec" to "{}"), authed())
+            assertEquals(400, malformed.statusCode)
+            assertEquals("invalid_spec", JSONObject(malformed.body).getString("code"))
+        } finally {
+            available.close()
+        }
+    }
+
+    @Test
     fun nonPingPathWithWrongBearerReturns401() {
         val resp = router.route(
             "GET", "/a11y_tree_full", emptyMap(),
@@ -137,6 +153,7 @@ class ActionRouterTest {
             "GET" to "/screenshot",
             "GET" to "/a11y_tree_full",
             "POST" to "/tap",
+            "POST" to "/tap_node",
             "POST" to "/swipe",
             "POST" to "/keyboard/input",
             "POST" to "/keyboard/key",

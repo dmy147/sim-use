@@ -27,7 +27,7 @@ import SimUseCore
 /// would balk at the `var` properties even though they're never read
 /// outside the lock.
 public final class BridgeClient: @unchecked Sendable {
-    public static let expectedProtocolVersion = 2
+    public static let expectedProtocolVersion = 3
     public static let defaultRemotePort = 8080
 
     /// Android package id of the device-bridge APK. Single source of
@@ -215,6 +215,37 @@ public final class BridgeClient: @unchecked Sendable {
     public func tap(x: Int, y: Int) throws {
         let body = "x=\(x)&y=\(y)".data(using: .utf8)!
         try sendNoResult(method: "POST", path: "/tap", body: body, contentType: "application/x-www-form-urlencoded")
+    }
+
+    /// POST /tap_node: the device revalidates this identity immediately before tapping.
+    public func tapNode(_ spec: CheckedTapSpec) throws -> CheckedTapResult {
+        try spec.validate()
+        // The safe handshake may replace a stale forward; build the action URL afterwards.
+        _ = try ping()
+        let request = try buildRequest(
+            method: "POST", path: "/tap_node", requiresAuth: true,
+            body: spec.formBody(), contentType: "application/x-www-form-urlencoded"
+        )
+        // A transport failure can follow a delivered gesture; never replay this POST.
+        let bytes: Data
+        do {
+            bytes = try sendRaw(request: request, expectAuth: true, allowReconnect: false)
+        } catch BridgeError.transport(let underlying, _) {
+            throw CLIError(errorDescription: "Checked-tap outcome is unknown; observe the screen before retrying. Bridge transport error: \(underlying)")
+        }
+        let envelope: BridgeEnvelope<CheckedTapResult>
+        do {
+            envelope = try JSONDecoder().decode(BridgeEnvelope<CheckedTapResult>.self, from: bytes)
+        } catch {
+            throw CLIError(errorDescription: "Checked-tap outcome is unknown; observe the screen before retrying. Malformed bridge response: \(error.localizedDescription)")
+        }
+        guard envelope.isSuccess else {
+            throw BridgeError.applicationError(status: envelope.status, code: envelope.code, message: envelope.error)
+        }
+        guard let result = envelope.result else {
+            throw CLIError(errorDescription: "Checked-tap outcome is unknown; observe the screen before retrying. Bridge response missing result.")
+        }
+        return result
     }
 
     /// `POST /swipe`.

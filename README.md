@@ -222,7 +222,7 @@ All device-scoped commands accept `--device <ID>` (optional when only one simula
 
   * **Top-level** — cross-platform verbs: `ui`, `tap`, `long-press`, `swipe`, `touch`, `multi-touch`, `type`, `paste`, `button`, `gesture`, `keyboard-state`, `screenshot`, `record-video`, `stream-video`, `app-state`. Same flags on iOS and Android; physical iOS devices route through `ui`, `tap` and `screenshot` only (the rest reject with the reason — see the [capability matrix](#physical-ios-devices)).
   * **`sim-use ios <verb>`** — iOS-Simulator-only: `key`, `key-combo`, `key-sequence`, `batch`, `rotate`, `fold`.
-  * **`sim-use android <verb>`** — Android-only: `init`, `devices`, `ping`, `scroll`.
+  * **`sim-use android <verb>`** — Android-only: `init`, `devices`, `ping`, `scroll`, `tap-node` (downstream branch).
   * **`sim-use ios-device <verb>`** — physical-iOS-only: `devices`, `ui`, `screenshot`, `tap` (experimental). Peer of `ios`/`android`; also accepts ECIDs and the hierarchy tuning flags the top level doesn't carry.
 
 Run `sim-use --help` or `sim-use <command> --help` for the full flag set.
@@ -263,6 +263,37 @@ sim-use gesture scroll-down --pre-delay 0.5 --post-delay 1.0 --device $UDID
 `--pre-delay` / `--post-delay` / `--duration` work on `tap`, `swipe`, and `gesture` alike for coarse timing control.
 
 Single-finger presets (`scroll-*`, `swipe-from-*-edge`) name **visual** directions and are orientation-aware on iOS: their canvas size and rotation are auto-detected per command, so `scroll-up` scrolls the on-screen content up whether the device is portrait, landscape, or upside-down. Explicit `tap`/`swipe`/`touch`/`multi-touch` coordinates, `paste --via-menu --target-x/--target-y` and the pinch/rotate `--center-x/--center-y` are in the same visual space `ui` prints (orientation-calibrated per command; the split `touch --down` / `--up` form calibrates each half). `--coordinate-space native` gives them in the device's native portrait points, as before 0.16.0. Calibration reuses the last `ui` snapshot when it can, so it costs a few milliseconds; with no snapshot it reads the tree once. On Android the flag is accepted and ignored — display coordinates already rotate with the UI.
+
+### Android checked tap (downstream branch)
+
+This downstream branch adds `sim-use android tap-node --device <serial> --json`. It reads one JSON spec from stdin and performs the checks and the ordinary `/tap` gesture on the device:
+
+```bash
+cat target.json | .build/debug/sim-use android tap-node --device "$SERIAL" --json
+```
+
+`target.json` has this shape; fill every field from the same `android ui --json` raw capture:
+
+```json
+{
+  "target": {
+    "className": "android.widget.Button",
+    "resourceId": "app:id/send",
+    "uniqueId": "",
+    "text": "Send",
+    "contentDescription": "",
+    "hint": "",
+    "ancestry": [{"className": "android.widget.FrameLayout", "resourceId": ""}]
+  },
+  "expectedBounds": {"left": 10, "top": 20, "right": 110, "bottom": 80}
+}
+```
+
+All identity strings are required and match exactly, including empty strings. Map native `hintText` to `hint`, and native null `uniqueId` / `hintText` to `""`. `ancestry` is the complete root-first real-window chain of class/resource-id pairs, excluding the target and the synthetic `__simuse:multi_window__` wrapper. Copy `boundsInScreen` to `expectedBounds`; coordinates must be signed 32-bit integers with positive width and height.
+
+The bridge requires one matching identity, visible/enabled target and ancestors, unchanged bounds, and an unobstructed tap point determined by window layer and accessibility drawing order. Success returns `{ok:true,data:{x,y,target,bounds}}` after dispatch; verify the resulting screen separately. Refusal exits nonzero with `{ok:false,error:"..."}` naming the failed condition and expected/observed values. This command bypasses the daemon so stdin remains in the caller, and does not replay the tap after a transport failure. It pays a fresh protocol handshake and persisted-forward validation per invocation. Identity text may include input contents; stdin avoids child-process argv, but the caller still has to redact its own logs and artifacts.
+
+This command requires the bridge APK built from this branch (its protocol version differs from upstream). See [downstream.md](docs/downstream.md) for installation, switching back to upstream, and limitations.
 
 ### Text input
 

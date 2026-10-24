@@ -19,6 +19,7 @@ public struct AndroidCommand: ParsableCommand {
             AndroidDescribeUICommand.self,
             AndroidPingCommand.self,
             AndroidTapCommand.self,
+            AndroidTapNodeCommand.self,
             AndroidSwipeCommand.self,
             AndroidTouchCommand.self,
             AndroidPasteCommand.self,

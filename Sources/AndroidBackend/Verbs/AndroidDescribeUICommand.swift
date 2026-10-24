@@ -32,6 +32,10 @@ public struct AndroidDescribeUICommand: SimUseExecutableCommand {
 
     public var simulatorUDIDForDaemon: String? { device.resolved }
 
+    public func canForwardDaemonJSON(_ response: Data) -> Bool {
+        jsonOutput && !noRaw && AndroidRawJSON.canForwardDaemonResponse(response)
+    }
+
     public mutating func resolveDeferredArguments() throws {
         try device.resolve()
     }

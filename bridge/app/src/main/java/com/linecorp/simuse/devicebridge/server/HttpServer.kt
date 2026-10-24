@@ -338,6 +338,7 @@ class HttpServer(
             400 to "Bad Request",
             401 to "Unauthorized",
             404 to "Not Found",
+            409 to "Conflict",
             500 to "Internal Server Error",
             503 to "Service Unavailable",
             504 to "Gateway Timeout",

@@ -33,7 +33,7 @@ sim-use ui --device <UDID>
 
 Read the outline. Each element has an `@N` alias and optionally a `#<id>` identifier. List cells carry `#N` (dominant list) or `#N@M` (scoped).
 
-Frames in the JSON output (`--json`: `entries[].frame`, `screen`) are in platform-native units — iOS **points**, Android **pixels**. Key off the envelope's `platform` field before doing math on coordinates across platforms. Always pair `--json` with `--no-raw` — see *Keeping output small* below.
+Frames in the JSON output (`--json`: `entries[].frame`, `screen`) are in platform-native units — iOS **points**, Android **pixels**. Key off the envelope's `platform` field before doing math on coordinates across platforms. For outline-based automation pair `--json` with `--no-raw` — see *Keeping output small* below; the optional checked tap needs raw identity.
 
 ### Act
 
@@ -50,6 +50,8 @@ Pick a selector, in order of preference:
 
 Disambiguate collisions with `--element-type` or `--frame minY=0.7r` (see `references/cheatsheet.md`).
 
+**Downstream branch only — checked Android tap.** The optional `android tap-node` verb is available only on the downstream branch with its matching bridge APK; upstream does not provide it. Callers that retain native raw captures can pipe a JSON spec to `sim-use android tap-node --device <serial> --json`. The shape is `{target:{className,resourceId,uniqueId,text,contentDescription,hint,ancestry:[{className,resourceId}]},expectedBounds:{left,top,right,bottom}}`. All six target strings are mandatory and compared exactly, including empty strings. Copy `hintText` to `hint`, null `uniqueId` / `hintText` to empty strings, and `boundsInScreen` to `expectedBounds`. Ancestry must contain every real ancestor root-first, excluding the target and synthetic multi-window wrapper. The bridge checks uniqueness, visible/enabled ancestry, exact bounds and topmost coverage before dispatching an ordinary tap. Refusals include the failed condition and observed values in the JSON error string. Keep specs on stdin; they may contain input text, so redact them in your own logs. Observe after dispatch, and after any unknown transport outcome before retrying. The regular workflow above and the preflight floor are unchanged.
+
 ### Verify
 
 Always verify after acting — commands are fire-and-forget:
@@ -64,7 +66,7 @@ sim-use screenshot --device <UDID> --output after.png
 Every byte of command output you read costs context. Defaults that keep the loop cheap:
 
 - Prefer the default text outline over `--json`. The outline carries everything a tap needs (`@N` / `#<id>` aliases, roles, frames, states); reach for `--json` when you need structured fields for coordinate math (`entries[].frame`, `screen`) or full untruncated text (the outline truncates labels at 60 graphemes, `value=` at 30).
-- When you do use `--json`, add `--no-raw`. `data.raw` is the raw accessibility tree — typically the bulk of the envelope's bytes, and useful only for debugging sim-use itself.
+- When you do use `--json`, add `--no-raw`. `data.raw` is the raw accessibility tree — typically the bulk of the envelope's bytes. Retain it only for debugging or a caller that needs native identity, such as the optional checked-tap path.
 - One `ui` per action: the Verify read of step N is the Observe read of step N+1. Don't run a second `ui` in between.
 - Verify with the text outline, not a screenshot. Reading a screenshot costs several times more than a typical outline; take one only when the check is genuinely visual (colors, images, layout).
 - On iOS, to wait out a transition, prefer `tap --label 'X' --wait-timeout 3` (polls for the element) over re-running `ui` in a loop. Android `tap` has no `--wait-timeout`; use `sleep` between commands instead.

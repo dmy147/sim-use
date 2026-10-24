@@ -11,18 +11,15 @@ android {
         applicationId = "com.linecorp.simuse.devicebridge"
         minSdk = 30
         targetSdk = 35
-        versionCode = 23
-        versionName = "0.16.0"
+        versionCode = 24
+        versionName = "0.16.0-local.1"
 
         // Must match `BridgeClient.expectedProtocolVersion` on the
         // Swift side — bump both together on breaking wire changes
-        // only (see CLAUDE.md). Bumped to 2: `/a11y_tree_full`
-        // may now return a synthetic root with `className =
-        // "__simuse:multi_window__"` when the app has secondary
-        // windows (PopupWindow / dialog / dropdown). Old clients would
-        // render the wrapper as an opaque node — bumping forces them
-        // to upgrade.
-        buildConfigField("int", "PROTOCOL_VERSION", "2")
+        // only (see CLAUDE.md). This downstream branch uses 3 for the
+        // checked /tap_node contract; upstream uses 2. Switching either
+        // direction requires the matching bridge APK.
+        buildConfigField("int", "PROTOCOL_VERSION", "3")
     }
 
     buildFeatures {

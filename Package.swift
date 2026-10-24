@@ -135,7 +135,8 @@ let package = Package(
             path: "Tests/AndroidBackendTests",
             exclude: [
                 "AndroidRecordVideoArgumentTests.swift",
-            ]
+            ],
+            resources: [.copy("Fixtures")]
         ),
         .plugin(
             name: "VersionPlugin",
@@ -324,11 +325,8 @@ let package = Package(
         .testTarget(
             name: "AndroidBackendTests",
             dependencies: ["AndroidBackend", "SimUseCore"],
-            path: "Tests/AndroidBackendTests"
-            // `Fixtures/` here is empty (`.gitkeep` only) — listing
-            // it as a resource would emit a SwiftPM warning. Add a
-            // `.copy("Fixtures")` entry when real fixture files
-            // land.
+            path: "Tests/AndroidBackendTests",
+            resources: [.copy("Fixtures")]
         ),
         .plugin(
             name: "VersionPlugin",

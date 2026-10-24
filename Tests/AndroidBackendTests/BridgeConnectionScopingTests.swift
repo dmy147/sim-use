@@ -411,7 +411,7 @@ final class RecordingBridgeProtocol: URLProtocol {
         }
 
         let body = url?.path == "/ping"
-            ? #"{"status":"success","result":"pong","protocol_version":2,"bridge_version":"test"}"#
+            ? #"{"status":"success","result":"pong","protocol_version":\#(BridgeClient.expectedProtocolVersion),"bridge_version":"test"}"#
             : #"{"status":"success"}"#
         let response = HTTPURLResponse(url: url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: nil)!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
