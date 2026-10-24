@@ -263,8 +263,9 @@ public struct IOSSimDescribeUICommand: SimUseExecutableCommand {
         // as a hint. Resolved *before* rendering so the outline header
         // can be reconciled against the real foreground app rather than
         // the (possibly stale/empty) AX-root label (issue #81). Reuses
-        // the daemon's just-taken liveness snapshot to avoid a second
-        // `launchctl` spawn when the root pid is already known.
+        // the daemon's just-taken liveness snapshot, or the foreground
+        // cache when the root pid is unchanged, to avoid a second
+        // `launchctl` spawn.
         let appPackage = BundleIdentifierResolver.resolve(
             udid: device.resolved,
             rootElement: typedTree.first,

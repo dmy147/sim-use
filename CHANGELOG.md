@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Notarized Homebrew packages retain their original Developer ID signature after installation.
 
+### Changed
+
+- iOS: `ui` reads the simulator's process list only when the foreground app changes, instead of on every read with `SIM_USE_NO_CRASH_DETECT=1` or on the home screen. Each such read is about 0.2–0.27 s faster.
+
 ### Fixed
 
 - Homebrew: preserve the upstream signature for notarized releases instead of replacing it with an ad-hoc signature. Release installation checks now use the same formula generator and verify that Homebrew leaves the signed binary unchanged.

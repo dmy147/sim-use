@@ -29,20 +29,24 @@ public enum BundleIdentifierResolver {
     /// describe-ui hot path (the daemon probes liveness right before the
     /// command runs — issue #81 perf follow-up). A miss (no root pid, or a
     /// pid the liveness probe excludes — SpringBoard's daemon label) falls
-    /// back to a fresh `resolve`, so the crashed-to-home header stays
-    /// correct. `cachedSnapshot == nil` (standalone, probe failed, or
-    /// detection disabled) is always a fresh resolve — no behavioural
-    /// change from the un-cached path.
+    /// back to `foregroundCache`, which lists processes only when the
+    /// root pid changed since its last successful read, so the
+    /// crashed-to-home header stays correct. The same applies when
+    /// `cachedSnapshot == nil` (standalone, probe failed, or detection
+    /// disabled with `SIM_USE_NO_CRASH_DETECT=1`).
     public static func resolve(
         udid: String,
         rootElement: AccessibilityElement?,
-        cachedSnapshot: AppSnapshot?
+        cachedSnapshot: AppSnapshot?,
+        foregroundCache: ForegroundAppCache = .shared
     ) -> String {
         if let pid = rootElement?.pid, pid > 0,
            let bundleId = cachedSnapshot?.appsByPid[pid] {
             return bundleId
         }
-        return resolve(udid: udid, rootElement: rootElement)
+        return foregroundCache.resolve(udid: udid, rootPid: rootElement?.pid) {
+            try? runLaunchctlList(udid: udid)
+        }
     }
 
     /// Parser exposed for tests. Returns the bundle id when the input
