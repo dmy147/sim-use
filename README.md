@@ -534,6 +534,9 @@ sim-use daemon stop --all
 
 # Force in-process execution for a single call (diagnostics)
 SIM_USE_NO_DAEMON=1 sim-use ui --device $UDID
+
+# Per-stage timing of a ui read on stderr (Android: host stages plus the bridge's own breakdown)
+SIM_USE_NO_DAEMON=1 SIM_USE_PERF=1 sim-use ui --device $SERIAL >/dev/null
 ```
 
 Daemons self-exit after 600 s of idle and log to `/tmp/sim-use-<uid>/<UDID>.log`. Streaming commands (`screenshot`, `record-video`, `stream-video`) always run in-process regardless.

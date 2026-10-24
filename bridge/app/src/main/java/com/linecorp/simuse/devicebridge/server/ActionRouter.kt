@@ -3,6 +3,7 @@ package com.linecorp.simuse.devicebridge.server
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
+import android.os.SystemClock
 import android.util.Base64
 import android.util.Log
 import android.view.WindowManager
@@ -123,7 +124,11 @@ class ActionRouter(
 
     private fun handleTree(params: Map<String, String>): HttpResponse {
         val service = requireService() ?: return serviceUnavailable()
+        // Stage timing (ms) returned in `X-Simuse-Perf`; the host prints it
+        // under SIM_USE_PERF=1 and older hosts ignore the header.
+        val t0 = SystemClock.elapsedRealtime()
         val activeRoot = getRootWithTimeout(service) ?: return rootWindowTimeout()
+        val tRoot = SystemClock.elapsedRealtime()
         // buildTree recycles activeRoot in its finally — read everything
         // we still need from the node BEFORE handing it over. On API
         // 30-32 recycle() clears the fields, so a post-recycle windowId
@@ -133,6 +138,7 @@ class ActionRouter(
         val filter = params["filter"]?.lowercase() == "true"
         val activeTree = treeHandler.buildTree(activeRoot, filter)
             ?: return HttpResponse(500, errorJson("tree_build_failed"))
+        val tWalk = SystemClock.elapsedRealtime()
 
         // Merge in any same-task secondary windows (PopupWindow-style
         // overlays that aren't the active window root). LINE's chat
@@ -144,6 +150,7 @@ class ActionRouter(
         val display = computeDisplay(service)
         val displayBounds = Rect(0, 0, display.optInt("width"), display.optInt("height"))
         val secondaries = collectSecondaryAppWindowTrees(service, activeWindowId, filter)
+        val tSecondary = SystemClock.elapsedRealtime()
 
         val resultTree = if (secondaries.isEmpty()) {
             activeTree
@@ -157,12 +164,19 @@ class ActionRouter(
         // so the client can correctly distinguish a fullscreen activity
         // from a floating popup / dialog whose root window covers only
         // part of the device.
+        val resultJson = resultTree.toJson()
+        val tJson = SystemClock.elapsedRealtime()
         val payload = JSONObject().apply {
             put("status", "success")
-            put("result", resultTree.toJson())
+            put("result", resultJson)
             put("display", display)
         }
-        return HttpResponse(200, payload.toString())
+        val body = payload.toString()
+        val tString = SystemClock.elapsedRealtime()
+        val perf = "root=${tRoot - t0};walk=${tWalk - tRoot};secondary=${tSecondary - tWalk};" +
+            "secondaryWindows=${secondaries.size};toJson=${tJson - tSecondary};" +
+            "toString=${tString - tJson};total=${tString - t0}"
+        return HttpResponse(200, body, mapOf(PERF_HEADER to perf))
     }
 
     /**
@@ -598,6 +612,7 @@ class ActionRouter(
     companion object {
         private const val TAG = "SimuseRouter"
         private const val DEFAULT_SWIPE_DURATION = 300L
+        const val PERF_HEADER = "X-Simuse-Perf"
         private const val ROOT_WINDOW_TIMEOUT_SECONDS = 5L
         private const val ROOT_WINDOW_WAIT_SECONDS = 2L
 

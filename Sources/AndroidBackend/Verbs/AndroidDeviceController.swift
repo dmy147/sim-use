@@ -62,15 +62,20 @@ public final class AndroidDeviceController {
         includeRaw: Bool = true
     ) throws -> DescribeUIResult {
         let client = bridge(serial: serial)
+        let perf = AndroidUIPerf()
         _ = try client.ping()
+        perf?.stage("ping")
 
         let rawBytes = try client.fetchTreeRaw()
+        perf?.stage("fetch")
         let decoded = try decodeTree(rawBytes)
         guard let root = decoded.root else {
             throw BridgeError.malformedEnvelope(underlying: "Bridge returned a tree without a root element")
         }
+        perf?.stage("decode")
 
         let outline = AndroidOutlineRenderer.render(root: root, display: decoded.display, options: options)
+        perf?.stage("render")
 
         // Timing-insensitive crash detection: if the system crash dialog
         // ("<app> keeps stopping") is on screen, surface it as a banner
@@ -92,6 +97,7 @@ public final class AndroidDeviceController {
         // another ~80 ms. Only pay that cost when the caller has asked
         // for `--json` output (the only consumer of `raw`).
         let rawJSON: JSONValue? = includeRaw ? try JSONValue.decode(from: rawBytes) : nil
+        perf?.stage("rawDecode")
 
         do {
             try OutlineCache.write(outline: outline, udid: serial)
@@ -105,6 +111,9 @@ public final class AndroidDeviceController {
                 Data("warning: failed to write outline cache for \(serial): \(error.localizedDescription)\n".utf8)
             )
         }
+
+        perf?.stage("cacheWrite")
+        perf?.finish(bytes: rawBytes.count, nodes: AndroidUIPerf.count(root), includeRaw: includeRaw, bridge: client.lastBridgePerf)
 
         return DescribeUIResult(
             platform: .android,
@@ -260,5 +269,42 @@ public final class AndroidDeviceController {
             throw BridgeError.applicationError(status: envelope.status, code: envelope.code, message: envelope.error)
         }
         return (envelope.result, envelope.display)
+    }
+}
+
+/// `SIM_USE_PERF=1` stage timing of an Android `ui` read: one stderr line
+/// per read, like the iOS `PerfLog`. Host stages are ms since the previous
+/// stage; `bridge=` is the bridge's own `X-Simuse-Perf` header
+/// (root/walk/secondary/toJson/toString/total ms), and `fetch` minus the
+/// bridge `total` is transport. Disabled, `AndroidUIPerf()` is nil and
+/// costs nothing.
+final class AndroidUIPerf {
+    private let start = DispatchTime.now()
+    private var last = DispatchTime.now()
+    private var stages: [String] = []
+
+    init?(environment: [String: String] = ProcessInfo.processInfo.environment) {
+        guard environment["SIM_USE_PERF"] == "1" else { return nil }
+    }
+
+    func stage(_ name: String) {
+        let now = DispatchTime.now()
+        stages.append(String(format: "%@=%.1f", name, Double(now.uptimeNanoseconds &- last.uptimeNanoseconds) / 1e6))
+        last = now
+    }
+
+    func line(bytes: Int, nodes: Int, includeRaw: Bool, bridge: String?) -> String {
+        let total = Double(DispatchTime.now().uptimeNanoseconds &- start.uptimeNanoseconds) / 1e6
+        return "[PERF] android-ui " + stages.joined(separator: " ")
+            + String(format: " total=%.1f", total)
+            + " bytes=\(bytes) nodes=\(nodes) raw=\(includeRaw) bridge=\(bridge ?? "-")"
+    }
+
+    func finish(bytes: Int, nodes: Int, includeRaw: Bool, bridge: String?) {
+        FileHandle.standardError.write(Data((line(bytes: bytes, nodes: nodes, includeRaw: includeRaw, bridge: bridge) + "\n").utf8))
+    }
+
+    static func count(_ node: ElementNode) -> Int {
+        node.children.reduce(1) { $0 + count($1) }
     }
 }

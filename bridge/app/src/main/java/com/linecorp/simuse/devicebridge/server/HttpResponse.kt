@@ -9,4 +9,6 @@ package com.linecorp.simuse.devicebridge.server
 data class HttpResponse(
     val statusCode: Int,
     val body: String,
+    /** Extra response headers, e.g. `X-Simuse-Perf`. */
+    val headers: Map<String, String> = emptyMap(),
 )

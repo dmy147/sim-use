@@ -282,6 +282,7 @@ class HttpServer(
             append("Content-Type: application/json; charset=utf-8\r\n")
             append("Content-Length: ${bodyBytes.size}\r\n")
             append("Connection: close\r\n")
+            response.headers.forEach { (k, v) -> append("$k: $v\r\n") }
             append("\r\n")
         }
 

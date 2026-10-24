@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Notarized Homebrew packages retain their original Developer ID signature after installation.
 
+### Added
+
+- Android: `SIM_USE_PERF=1` prints one stderr line per `ui` read with the time of each host stage and the bridge's own breakdown (root, tree walk, secondary windows, serialization), which the bridge returns in an `X-Simuse-Perf` response header. Like on iOS, set it for an in-process run (`SIM_USE_NO_DAEMON=1`) or when the daemon starts; the lines then go to the daemon log.
+
 ### Fixed
 
 - Homebrew: preserve the upstream signature for notarized releases instead of replacing it with an ad-hoc signature. Release installation checks now use the same formula generator and verify that Homebrew leaves the signed binary unchanged.
