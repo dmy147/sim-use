@@ -154,8 +154,8 @@ public enum BundleIdentifierResolver {
         let stderrPipe = makePipe()
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
-        // Close our read ends on every path: an unclosed Pipe leaks two descriptors per call, and in the
-        // long-lived daemon that ended every later spawn (and every process-list read).
+        // Close our read ends on every path, including the timeout below: an unclosed Pipe leaks two
+        // descriptors per call, and in the long-lived daemon that ended every later spawn.
         defer {
             try? stdoutPipe.fileHandleForReading.close()
             try? stderrPipe.fileHandleForReading.close()
@@ -179,6 +179,14 @@ public enum BundleIdentifierResolver {
             }
             Thread.sleep(forTimeInterval: 0.02)
         }
+        // The child has exited, so this returns at once. It runs the
+        // termination block Process queued on this thread's run loop; until
+        // that runs, the block keeps the Process and both Pipes alive, and in
+        // the daemon it later ran outside any autorelease pool, so every call
+        // leaked both Pipes. Not called on the timeout path, where a child
+        // that ignores terminate() would block here; `defer` closes the read
+        // ends there.
+        process.waitUntilExit()
         guard process.terminationStatus == 0 else {
             throw NSError(domain: "BundleIdentifierResolver", code: Int(process.terminationStatus))
         }

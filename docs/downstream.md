@@ -6,7 +6,7 @@ The `downstream` branch is upstream [lycorp-jp/sim-use](https://github.com/lycor
 
 | Item | Value |
 | --- | --- |
-| CLI | `v0.16.0-local.11` (stamped at build time with `SIM_USE_VERSION`) |
+| CLI | `v0.16.0-local.12` (stamped at build time with `SIM_USE_VERSION`) |
 | Bridge APK | versionCode **29**, versionName `0.16.0-local.11` |
 | Bridge protocol | **4** (upstream: 2) |
 
@@ -32,7 +32,7 @@ The protocol differs from upstream on purpose: a protocol-2 bridge would ignore 
 
 | Change | Interface |
 | --- | --- |
-| Daemon descriptor leak fixed: every `launchctl list` read left both pipe read ends open, which in the long-lived daemon ended in failed spawns and empty `appPackage`. | none |
+| Daemon pipe leak fixed: every `launchctl list` read kept both pipes and their read ends alive (the process was never waited for, so its termination block held it), which in the long-lived daemon ended in failed spawns and empty `appPackage`. | none |
 | Swipe hold: a stationary pause still flings on the simulator, so the drag stops short of the end point and covers the rest at ~130 pt/s (4 pt every ~30 ms) before lifting. | `swipe --hold <seconds>` (0-5), top level and `ios swipe` |
 | Screenshots through the warm daemon instead of a fresh process (about 60 ms against 230 ms). `--output` is anchored at the caller's directory. The capture skips the liveness probe. Android and physical iOS stay in-process. | none |
 | One HID stabilization sleep per typed text instead of one per key event (66 characters: 4.4 s to 0.3 s, no dropped characters). Taps and swipes keep their per-command sleep. | none |
@@ -73,7 +73,7 @@ The checks are an accessibility-geometry approximation, not Android's touch disp
 ```sh
 scripts/build-bridge.sh                     # bridge APK into the SwiftPM resources
 ./scripts/build.sh dev                      # idb frameworks (first time)
-SIM_USE_VERSION=v0.16.0-local.11 swift build -c release
+SIM_USE_VERSION=v0.16.0-local.12 swift build -c release
 make test
 (cd bridge && ./gradlew :app:testDebugUnitTest)
 ```

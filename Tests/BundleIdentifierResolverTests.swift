@@ -140,4 +140,33 @@ struct BundleIdentifierResolverProcessTests {
             #expect(now == nil || now!.dev != reader.dev || now!.ino != reader.ino, "read end \(reader.fd) is still open")
         }
     }
+
+    // Closing the read ends stopped the descriptor leak, but the daemon still
+    // kept every Pipe: without waitUntilExit() the Process stays retained by
+    // its pending termination block on this thread's run loop, and once that
+    // block ran outside any autorelease pool the Pipes were never released.
+    @Test("Both pipes are released after the call", arguments: [
+        ["/bin/echo", "hello"],
+        ["/bin/sh", "-c", "echo oops >&2; exit 3"],
+    ])
+    func releasesPipes(command: [String]) throws {
+        weak var stdoutPipe: Pipe?
+        weak var stderrPipe: Pipe?
+        autoreleasepool {
+            var made = 0
+            _ = try? BundleIdentifierResolver.runCapturing(
+                executable: URL(fileURLWithPath: command[0]),
+                arguments: Array(command.dropFirst()),
+                timeout: 5,
+                makePipe: {
+                    let pipe = Pipe()
+                    if made == 0 { stdoutPipe = pipe } else { stderrPipe = pipe }
+                    made += 1
+                    return pipe
+                }
+            )
+        }
+        #expect(stdoutPipe == nil, "stdout Pipe is still alive")
+        #expect(stderrPipe == nil, "stderr Pipe is still alive")
+    }
 }
